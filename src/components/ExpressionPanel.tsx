@@ -185,9 +185,13 @@ export const ExpressionPanel: React.FC<ExpressionPanelProps> = ({
 
   const toggleExpression = useCallback((index: number) => {
     const updatedExpressions = [...expressions];
-    // Toggle visibility by adding/removing from active list
-    // This would need to be implemented in the parent component
-    onExpressionsChange(updatedExpressions);
+    const expression = updatedExpressions[index];
+
+    // Toggle the visibility property
+    if (expression) {
+      expression.visible = expression.visible === false ? true : false; // Default to true if undefined
+      onExpressionsChange(updatedExpressions);
+    }
   }, [expressions, onExpressionsChange]);
 
   const applyTemplate = useCallback((template: ExpressionTemplate) => {
@@ -407,10 +411,10 @@ export const ExpressionPanel: React.FC<ExpressionPanelProps> = ({
                 <div className="flex gap-2">
                   <button
                     onClick={() => toggleExpression(index)}
-                    className="text-blue-600 hover:text-blue-800"
-                    title="Toggle visibility"
+                    className={`hover:opacity-70 ${expr.visible === false ? 'text-gray-400 opacity-50' : 'text-blue-600'}`}
+                    title={`Toggle visibility (${expr.visible === false ? 'hidden' : 'visible'})`}
                   >
-                    👁️
+                    {expr.visible === false ? '👁️‍🗨️' : '👁️'}
                   </button>
                   <button
                     onClick={() => removeExpression(index)}

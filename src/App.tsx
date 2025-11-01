@@ -23,12 +23,17 @@ function App() {
     axisColor: '#333333'
   };
 
-  // Generate combined plot data from all expressions
+  // Generate combined plot data from all visible expressions
   const plotData = useMemo(() => {
     const plotter = new HybridPlotter(config);
     const allRegions = [];
 
     for (const expression of expressions) {
+      // Skip invisible expressions
+      if (expression.visible === false) {
+        continue;
+      }
+
       try {
         // Parse the expression to get AST
         const parser = new ExpressionParser();

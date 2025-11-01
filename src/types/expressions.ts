@@ -7,6 +7,7 @@ export interface PointExpression {
   name?: string;      // "A" for named points
   color?: string;
   label?: string;
+  visible?: boolean;  // Toggle visibility in the plot
 }
 
 export interface EqualityExpression {
@@ -15,6 +16,7 @@ export interface EqualityExpression {
   originalExpression?: string;
   color?: string;
   label?: string;
+  visible?: boolean;  // Toggle visibility in the plot
 }
 
 export interface InequalityExpression {
@@ -23,6 +25,7 @@ export interface InequalityExpression {
   originalExpression?: string;
   color?: string;
   label?: string;
+  visible?: boolean;  // Toggle visibility in the plot
 }
 
 export interface NamedVariable {
