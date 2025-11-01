@@ -128,7 +128,7 @@ export class HybridPlotter {
         error: error instanceof Error ? error.message : 'Plotting error',
         metadata: {
           resolution: this.config.resolution,
-          boundingBox: { min: { x: -this.config.range, y: -this.config.range }, max: { x: this.config.range, y: this.config.range } },
+          boundingBox: { min: { x: -this.config.range, y: -this.config.range }, max: { x: this.config.range, y: this.config.range } }, // Keep original range for error cases
           computationTime: performance.now() - startTime
         }
       };
@@ -246,6 +246,14 @@ export class HybridPlotter {
 
   // Try to find analytical solutions for simple modulus equalities
   private tryAnalyticSolution(ast: ASTNode): Point[][] | null {
+    // Check for |Re(z)| = constant or |Im(z)| = constant patterns
+    if (this.isRealImagModulusEquality(ast)) {
+      const lineCurves = this.generateRealImagModulusLine(ast);
+      if (lineCurves) {
+        return lineCurves;
+      }
+    }
+
     // Check if this is of the form |z - a| = |z - b|
     if (this.isModulusEquality(ast)) {
       const points = this.extractComplexConstants(ast);
@@ -365,8 +373,9 @@ export class HybridPlotter {
       const dirX = perpX / length;
       const dirY = perpY / length;
 
-      // Generate points along the perpendicular bisector
-      const lineLength = this.config.range * 2;
+      // Generate points along the perpendicular bisector using viewport range
+      const viewportRange = this.getViewportRange();
+      const lineLength = Math.max(viewportRange.maxX - viewportRange.minX, viewportRange.maxY - viewportRange.minY);
       for (let i = 0; i < numPoints; i++) {
         const t = (i / (numPoints - 1) - 0.5) * lineLength;
         points.push({
@@ -652,10 +661,13 @@ export class HybridPlotter {
     const points: Point[] = [];
     const numPoints = 100;
 
+    // Use viewport range instead of fixed config range
+    const viewportRange = this.getViewportRange();
+
     if (lineInfo.type === 'horizontal') {
       // Generate horizontal line: y = value
       for (let i = 0; i < numPoints; i++) {
-        const t = (i / (numPoints - 1)) * 2 * this.config.range - this.config.range;
+        const t = (i / (numPoints - 1)) * (viewportRange.maxX - viewportRange.minX) + viewportRange.minX;
         points.push({
           x: t,
           y: lineInfo.value
@@ -664,7 +676,7 @@ export class HybridPlotter {
     } else {
       // Generate vertical line: x = value
       for (let i = 0; i < numPoints; i++) {
-        const t = (i / (numPoints - 1)) * 2 * this.config.range - this.config.range;
+        const t = (i / (numPoints - 1)) * (viewportRange.maxY - viewportRange.minY) + viewportRange.minY;
         points.push({
           x: lineInfo.value,
           y: t
@@ -703,9 +715,10 @@ export class HybridPlotter {
         ? { real: result.value, imaginary: 0 }
         : result.value;
 
-      // Check if the point is within our plotting range
-      if (Math.abs(complexValue.real) <= this.config.range &&
-          Math.abs(complexValue.imaginary) <= this.config.range) {
+      // Check if the point is within our plotting range using viewport
+      const viewportRange = this.getViewportRange();
+      if (complexValue.real >= viewportRange.minX && complexValue.real <= viewportRange.maxX &&
+          complexValue.imaginary >= viewportRange.minY && complexValue.imaginary <= viewportRange.maxY) {
         regions.push({
           points: [{ x: complexValue.real, y: complexValue.imaginary }],
           boundary: [],
@@ -730,8 +743,12 @@ export class HybridPlotter {
 
   private traceBoundary(ast: ASTNode): Point[][] {
     const boundaryCurves: Point[][] = [];
-    const stepSize = 0.02; // Decreased step size for much smoother curves
-    const maxSteps = 5000; // Increased max steps to compensate for smaller step size
+
+    // Adaptive step size and max steps based on viewport range
+    const viewportRange = this.getViewportRange();
+    const viewportSize = Math.max(viewportRange.maxX - viewportRange.minX, viewportRange.maxY - viewportRange.minY);
+    const stepSize = Math.max(0.02, viewportSize / 1000); // Adaptive step size
+    const maxSteps = Math.max(5000, Math.floor(viewportSize / stepSize * 2)); // Adaptive max steps
 
     // Try to find starting points on the boundary
     const startingPoints = this.findBoundaryStartingPoints(ast);
@@ -745,9 +762,18 @@ export class HybridPlotter {
 
       const path = this.traceFromPoint(ast, start, stepSize, maxSteps);
       if (path.length > 0) {
-        // Temporarily disable curve similarity check for debugging
-        // TODO: Re-enable this once basic tracing works
-        boundaryCurves.push(path);
+        // Check if this path is similar to any existing curves to prevent duplicates
+        let isDuplicate = false;
+        for (const existingCurve of boundaryCurves) {
+          if (this.curvesAreSimilar(path, existingCurve, 0.5)) {
+            isDuplicate = true;
+            break;
+          }
+        }
+
+        if (!isDuplicate) {
+          boundaryCurves.push(path);
+        }
       }
     }
 
@@ -783,22 +809,22 @@ export class HybridPlotter {
 
   private findBoundaryStartingPoints(ast: ASTNode): Point[] {
     const startingPoints: Point[] = [];
-    const tolerance = 0.05; // Much more relaxed tolerance for better boundary detection
+    const tolerance = 0.05;
 
     // Use viewport range instead of fixed range
     const viewportRange = this.getViewportRange();
 
-    // First try a comprehensive grid search for any boundary points
-    const searchStep = viewportRange.range / 30; // Much finer grid for better boundary detection
+    // Use deterministic grid search with fixed seed-like behavior
+    const searchStep = viewportRange.range / 20; // Slightly coarser for stability
+
+    // Always scan in the same order for consistency
     for (let x = viewportRange.minX; x <= viewportRange.maxX; x += searchStep) {
       for (let y = viewportRange.minY; y <= viewportRange.maxY; y += searchStep) {
         if (this.isNearBoundary(ast, { x, y }, tolerance)) {
-          // Refine the point to be more precise
           const refinedPoint = this.refineBoundaryPoint(ast, { x, y });
           if (refinedPoint) {
             startingPoints.push(refinedPoint);
           } else {
-            // Fallback: use the original point if refinement fails
             startingPoints.push({ x, y });
           }
         }
@@ -807,8 +833,9 @@ export class HybridPlotter {
 
     // If no points found with grid search, try systematic searches around different centers
     if (startingPoints.length === 0) {
-      // Try circles centered at origin using viewport range
-      for (let radius = 0.5; radius <= viewportRange.range; radius += 0.5) {
+      // Try circles centered at origin using viewport range, extended for zoom-out
+      const maxRadius = Math.max(viewportRange.range * 2, 10); // Search much further when zoomed out
+      for (let radius = 0.5; radius <= maxRadius; radius += 0.5) {
         for (let angle = 0; angle < 2 * Math.PI; angle += Math.PI / 8) {
           const x = radius * Math.cos(angle);
           const y = radius * Math.sin(angle);
@@ -833,7 +860,7 @@ export class HybridPlotter {
       ];
 
       for (const center of centers) {
-        for (let radius = 0.5; radius <= viewportRange.range; radius += 0.5) {
+        for (let radius = 0.5; radius <= maxRadius; radius += 0.5) {
           for (let angle = 0; angle < 2 * Math.PI; angle += Math.PI / 8) {
             const x = center.x + radius * Math.cos(angle);
             const y = center.y + radius * Math.sin(angle);
@@ -962,11 +989,15 @@ export class HybridPlotter {
         break;
       }
 
-      // Check bounds - but include the last point that's slightly out of bounds
-      if (Math.abs(next.x) > this.config.range * 1.1 || Math.abs(next.y) > this.config.range * 1.1) {
+      // Check bounds using viewport range - but include the last point that's slightly out of bounds
+      const viewportRange = this.getViewportRange();
+      const maxBound = Math.max(Math.abs(viewportRange.minX), Math.abs(viewportRange.maxX),
+                               Math.abs(viewportRange.minY), Math.abs(viewportRange.maxY));
+
+      if (Math.abs(next.x) > maxBound * 1.1 || Math.abs(next.y) > maxBound * 1.1) {
         console.log(`Point (${next.x.toFixed(2)}, ${next.y.toFixed(2)}) out of bounds, stopping trace`);
         // Still add the out-of-bounds point if it's not too far
-        if (Math.abs(next.x) <= this.config.range * 1.2 && Math.abs(next.y) <= this.config.range * 1.2) {
+        if (Math.abs(next.x) <= maxBound * 1.2 && Math.abs(next.y) <= maxBound * 1.2) {
           path.push(next);
         }
         break;
@@ -1076,12 +1107,16 @@ export class HybridPlotter {
     // Marching squares algorithm for contour detection
     const contour: Point[] = [];
     const resolution = this.config.resolution * 2; // Double resolution for better line detection
-    const stepSize = (2 * this.config.range) / resolution;
+
+    // Use viewport range instead of fixed config range
+    const viewportRange = this.getViewportRange();
+    const stepSizeX = (viewportRange.maxX - viewportRange.minX) / resolution;
+    const stepSizeY = (viewportRange.maxY - viewportRange.minY) / resolution;
 
     for (let i = 0; i < resolution - 1; i++) {
       for (let j = 0; j < resolution - 1; j++) {
-        const x = -this.config.range + i * stepSize;
-        const y = -this.config.range + j * stepSize;
+        const x = viewportRange.minX + i * stepSizeX;
+        const y = viewportRange.minY + j * stepSizeY;
 
         // Evaluate at corners of cell
         const corners = [
@@ -1224,13 +1259,16 @@ export class HybridPlotter {
       }
     };
 
-    // Start subdivision
-    const initialSize = (2 * this.config.range) / initialResolution;
+    // Start subdivision with viewport range
+    const viewportRange = this.getViewportRange();
+    const initialSizeX = (viewportRange.maxX - viewportRange.minX) / initialResolution;
+    const initialSizeY = (viewportRange.maxY - viewportRange.minY) / initialResolution;
+
     for (let i = 0; i < initialResolution; i++) {
       for (let j = 0; j < initialResolution; j++) {
-        const x = -this.config.range + i * initialSize;
-        const y = -this.config.range + j * initialSize;
-        subdivide(x, y, initialSize, 0);
+        const x = viewportRange.minX + i * initialSizeX;
+        const y = viewportRange.minY + j * initialSizeY;
+        subdivide(x, y, Math.max(initialSizeX, initialSizeY), 0);
       }
     }
 
@@ -1340,5 +1378,71 @@ export class HybridPlotter {
 
   private modulus(z: ComplexNumber): number {
     return Math.sqrt(z.real * z.real + z.imaginary * z.imaginary);
+  }
+
+  // Check if this is |Re(z)| = constant or |Im(z)| = constant
+  private isRealImagModulusEquality(ast: ASTNode): boolean {
+    if (ast.type !== 'binary' || ast.operator !== '=') return false;
+
+    // Check left side is modulus function
+    if (ast.left?.type !== 'modulus') return false;
+
+    // Check right side is a number
+    if (ast.right?.type !== 'number') return false;
+
+    // Check modulus operand is Re(z) or Im(z)
+    const operand = ast.left.operand;
+    if (operand?.type !== 'function') return false;
+
+    return operand.value === 'Re' || operand.value === 'Im';
+  }
+
+  // Generate line points for |Re(z)| = constant or |Im(z)| = constant
+  private generateRealImagModulusLine(ast: ASTNode): Point[][] | null {
+    if (ast.type !== 'binary' || ast.operator !== '=') return null;
+    if (ast.right?.type !== 'number') return null;
+    if (ast.left?.type !== 'modulus') return null;
+    if (ast.left.operand?.type !== 'function') return null;
+
+    const constant = Math.abs(typeof ast.right.value === 'number' ? ast.right.value : parseFloat(ast.right.value.toString()));
+    const functionName = typeof ast.left.operand.value === 'string' ? ast.left.operand.value : ast.left.operand.value.toString();
+
+    const viewportRange = this.getViewportRange();
+    const numPoints = 100;
+    const curves: Point[][] = [];
+
+    if (functionName === 'Re') {
+      // |Re(z)| = constant creates vertical lines at x = constant and x = -constant
+      // Generate each line as a separate curve
+      for (const x of [constant, -constant]) {
+        const points: Point[] = [];
+        const yMin = viewportRange.minY;
+        const yMax = viewportRange.maxY;
+        const step = (yMax - yMin) / numPoints;
+
+        for (let i = 0; i <= numPoints; i++) {
+          const y = yMin + i * step;
+          points.push({ x, y });
+        }
+        curves.push(points);
+      }
+    } else if (functionName === 'Im') {
+      // |Im(z)| = constant creates horizontal lines at y = constant and y = -constant
+      // Generate each line as a separate curve
+      for (const y of [constant, -constant]) {
+        const points: Point[] = [];
+        const xMin = viewportRange.minX;
+        const xMax = viewportRange.maxX;
+        const step = (xMax - xMin) / numPoints;
+
+        for (let i = 0; i <= numPoints; i++) {
+          const x = xMin + i * step;
+          points.push({ x, y });
+        }
+        curves.push(points);
+      }
+    }
+
+    return curves.length > 0 ? curves : null;
   }
 }
