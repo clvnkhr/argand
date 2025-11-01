@@ -32,6 +32,36 @@ export class HybridPlotter {
     this.config = config;
   }
 
+  // Calculate current viewport range based on viewport settings
+  private getViewportRange(): { minX: number; maxX: number; minY: number; maxY: number; range: number } {
+    if (this.config.viewportOffsetX !== undefined &&
+        this.config.viewportOffsetY !== undefined &&
+        this.config.viewportZoom !== undefined) {
+
+      // Calculate visible range in math coordinates
+      const baseRange = this.config.range;
+      const scaledRange = baseRange / this.config.viewportZoom;
+
+      return {
+        minX: this.config.viewportOffsetX - scaledRange,
+        maxX: this.config.viewportOffsetX + scaledRange,
+        minY: this.config.viewportOffsetY - scaledRange,
+        maxY: this.config.viewportOffsetY + scaledRange,
+        range: scaledRange
+      };
+    }
+
+    // Fallback to original behavior if no viewport info
+    const range = this.config.range;
+    return {
+      minX: -range,
+      maxX: range,
+      minY: -range,
+      maxY: range,
+      range
+    };
+  }
+
   updateConfig(config: Partial<PlotConfig>) {
     this.config = { ...this.config, ...config };
   }
@@ -64,6 +94,24 @@ export class HybridPlotter {
       }
 
       const endTime = performance.now();
+
+      // If no regions were found, create a default viewport-based bounding box
+      if (regions.length === 0) {
+        const viewportRange = this.getViewportRange();
+        return {
+          regions: [],
+          error: 'No regions found',
+          metadata: {
+            resolution: this.config.resolution,
+            boundingBox: {
+              min: { x: viewportRange.minX, y: viewportRange.minY },
+              max: { x: viewportRange.maxX, y: viewportRange.maxY }
+            },
+            computationTime: endTime - startTime
+          }
+        };
+      }
+
       const boundingBox = this.calculateBoundingBox(regions);
 
       return {
@@ -737,10 +785,13 @@ export class HybridPlotter {
     const startingPoints: Point[] = [];
     const tolerance = 0.05; // Much more relaxed tolerance for better boundary detection
 
+    // Use viewport range instead of fixed range
+    const viewportRange = this.getViewportRange();
+
     // First try a comprehensive grid search for any boundary points
-    const searchStep = this.config.range / 30; // Much finer grid for better boundary detection
-    for (let x = -this.config.range; x <= this.config.range; x += searchStep) {
-      for (let y = -this.config.range; y <= this.config.range; y += searchStep) {
+    const searchStep = viewportRange.range / 30; // Much finer grid for better boundary detection
+    for (let x = viewportRange.minX; x <= viewportRange.maxX; x += searchStep) {
+      for (let y = viewportRange.minY; y <= viewportRange.maxY; y += searchStep) {
         if (this.isNearBoundary(ast, { x, y }, tolerance)) {
           // Refine the point to be more precise
           const refinedPoint = this.refineBoundaryPoint(ast, { x, y });
@@ -756,8 +807,8 @@ export class HybridPlotter {
 
     // If no points found with grid search, try systematic searches around different centers
     if (startingPoints.length === 0) {
-      // Try circles centered at origin
-      for (let radius = 0.5; radius <= this.config.range; radius += 0.5) {
+      // Try circles centered at origin using viewport range
+      for (let radius = 0.5; radius <= viewportRange.range; radius += 0.5) {
         for (let angle = 0; angle < 2 * Math.PI; angle += Math.PI / 8) {
           const x = radius * Math.cos(angle);
           const y = radius * Math.sin(angle);
@@ -782,7 +833,7 @@ export class HybridPlotter {
       ];
 
       for (const center of centers) {
-        for (let radius = 0.5; radius <= this.config.range; radius += 0.5) {
+        for (let radius = 0.5; radius <= viewportRange.range; radius += 0.5) {
           for (let angle = 0; angle < 2 * Math.PI; angle += Math.PI / 8) {
             const x = center.x + radius * Math.cos(angle);
             const y = center.y + radius * Math.sin(angle);
@@ -1097,17 +1148,21 @@ export class HybridPlotter {
   private gridSampleInequality(ast: ASTNode, expression: string): PlotRegion[] {
     const regions: PlotRegion[] = [];
     const resolution = this.config.resolution;
-    const stepSize = (2 * this.config.range) / resolution;
+
+    // Use viewport range instead of fixed range
+    const viewportRange = this.getViewportRange();
+    const range = viewportRange.range;
+    const stepSize = (2 * range) / resolution;
 
     const gridData: number[][] = [];
     const points: Point[] = [];
 
-    // Sample the entire grid
+    // Sample the entire grid using viewport bounds
     for (let i = 0; i < resolution; i++) {
       gridData[i] = [];
       for (let j = 0; j < resolution; j++) {
-        const x = -this.config.range + i * stepSize;
-        const y = -this.config.range + j * stepSize;
+        const x = viewportRange.minX + i * stepSize;
+        const y = viewportRange.minY + j * stepSize;
         const value = this.evaluateAtPoint(ast, x, y);
         gridData[i][j] = value;
 
@@ -1275,8 +1330,9 @@ export class HybridPlotter {
 
     // Default bounds if no points found
     if (min.x === Infinity) {
-      min = { x: -this.config.range, y: -this.config.range };
-      max = { x: this.config.range, y: this.config.range };
+      const viewportRange = this.getViewportRange();
+      min = { x: viewportRange.minX, y: viewportRange.minY };
+      max = { x: viewportRange.maxX, y: viewportRange.maxY };
     }
 
     return { min, max };
