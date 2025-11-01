@@ -9,6 +9,7 @@ import './App.css';
 
 function App() {
   const [expressions, setExpressions] = useState<PlotExpression[]>([]);
+  const [viewport, setViewport] = useState({ offsetX: 0, offsetY: 0, zoomLevel: 1 });
 
   const config: PlotConfig = {
     width: 700,
@@ -25,7 +26,15 @@ function App() {
 
   // Generate combined plot data from all visible expressions
   const plotData = useMemo(() => {
-    const plotter = new HybridPlotter(config);
+    // Update config with viewport information
+    const configWithViewport = {
+      ...config,
+      viewportOffsetX: viewport.offsetX,
+      viewportOffsetY: viewport.offsetY,
+      viewportZoom: viewport.zoomLevel
+    };
+
+    const plotter = new HybridPlotter(configWithViewport);
     const allRegions = [];
 
     for (const expression of expressions) {
@@ -57,10 +66,14 @@ function App() {
     }
 
     return { regions: allRegions };
-  }, [expressions, config]);
+  }, [expressions, config, viewport]);
 
   const handleExpressionsChange = useCallback((newExpressions: PlotExpression[]) => {
     setExpressions(newExpressions);
+  }, []);
+
+  const handleViewportChange = useCallback((newViewport: any) => {
+    setViewport(newViewport);
   }, []);
 
   return (
@@ -79,6 +92,7 @@ function App() {
             height={config.height}
             range={config.range}
             config={config}
+            onViewportChange={handleViewportChange}
           />
         </div>
 

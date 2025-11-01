@@ -1242,11 +1242,34 @@ export class HybridPlotter {
     let max = { x: -Infinity, y: -Infinity };
 
     for (const region of regions) {
-      for (const point of [...region.points, ...region.boundary]) {
+      for (const point of region.points) {
         min.x = Math.min(min.x, point.x);
         min.y = Math.min(min.y, point.y);
         max.x = Math.max(max.x, point.x);
         max.y = Math.max(max.y, point.y);
+      }
+
+      // Handle boundary which can be Point[] or Point[][]
+      if (Array.isArray(region.boundary)) {
+        if (region.boundary.length > 0 && Array.isArray(region.boundary[0])) {
+          // Point[][]
+          for (const curve of region.boundary as Point[][]) {
+            for (const point of curve) {
+              min.x = Math.min(min.x, point.x);
+              min.y = Math.min(min.y, point.y);
+              max.x = Math.max(max.x, point.x);
+              max.y = Math.max(max.y, point.y);
+            }
+          }
+        } else {
+          // Point[]
+          for (const point of region.boundary as Point[]) {
+            min.x = Math.min(min.x, point.x);
+            min.y = Math.min(min.y, point.y);
+            max.x = Math.max(max.x, point.x);
+            max.y = Math.max(max.y, point.y);
+          }
+        }
       }
     }
 

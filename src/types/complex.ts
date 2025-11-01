@@ -76,4 +76,8 @@ export interface PlotConfig {
   backgroundColor: string;
   gridColor: string;
   axisColor: string;
+  // Viewport information for dynamic plotting
+  viewportOffsetX?: number;
+  viewportOffsetY?: number;
+  viewportZoom?: number;
 }

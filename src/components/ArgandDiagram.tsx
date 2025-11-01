@@ -1,6 +1,12 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import { Point, Curve, Inequality, PlotElement, PlotConfig } from '../types/complex';
 import { PlotRegion } from '../math/plotting';
+
+interface ViewportState {
+  offsetX: number;
+  offsetY: number;
+  zoomLevel: number;
+}
 
 interface ArgandDiagramProps {
   elements: PlotElement[];
@@ -9,6 +15,7 @@ interface ArgandDiagramProps {
   height?: number;
   range?: number;
   config?: PlotConfig;
+  onViewportChange?: (viewport: ViewportState) => void;
 }
 
 const ArgandDiagram: React.FC<ArgandDiagramProps> = ({
@@ -17,88 +24,313 @@ const ArgandDiagram: React.FC<ArgandDiagramProps> = ({
   width = 700,
   height = 700,
   range = 15,
-  config: _
+  config: _,
+  onViewportChange
 }) => {
   const [hoveredPoint, setHoveredPoint] = useState<Point | null>(null);
-
-  const scale = width / (2 * range);
-  const center = width / 2;
-
-  const toScreenCoords = (x: number, y: number) => ({
-    x: center + x * scale,
-    y: center - y * scale // Flip y-axis for screen coordinates
+  const [viewport, setViewport] = useState<ViewportState>({
+    offsetX: 0,
+    offsetY: 0,
+    zoomLevel: 1
   });
 
-  
+  // Wrapper to call onViewportChange when viewport changes
+  const updateViewport = useCallback((newViewport: ViewportState | ((prev: ViewportState) => ViewportState)) => {
+    const updatedViewport = typeof newViewport === 'function' ? newViewport(viewport) : newViewport;
+    setViewport(updatedViewport);
+    if (onViewportChange) {
+      onViewportChange(updatedViewport);
+    }
+  }, [onViewportChange, viewport]);
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const svgRef = useRef<SVGSVGElement>(null);
+
+  const baseScale = width / (2 * range);
+  const scale = baseScale * viewport.zoomLevel;
+  const center = { x: width / 2, y: height / 2 };
+
+  const toScreenCoords = (x: number, y: number) => ({
+    x: center.x + (x - viewport.offsetX) * scale,
+    y: center.y - (y - viewport.offsetY) * scale // Flip y-axis for screen coordinates
+  });
+
+  const toMathCoords = (screenX: number, screenY: number) => ({
+    x: (screenX - center.x) / scale + viewport.offsetX,
+    y: -(screenY - center.y) / scale + viewport.offsetY // Flip y-axis for math coordinates
+  });
+
+  // Mouse event handlers for panning
+  const handleMouseDown = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
+    if (e.button === 0) { // Left mouse button only
+      setIsDragging(true);
+      setDragStart({ x: e.clientX, y: e.clientY });
+      e.preventDefault();
+    }
+  }, []);
+
+  const handleMouseMove = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
+    if (!isDragging) return;
+
+    const deltaX = e.clientX - dragStart.x;
+    const deltaY = e.clientY - dragStart.y;
+
+    // Convert pixel delta to math coordinate delta
+    const mathDeltaX = -deltaX / scale;
+    const mathDeltaY = deltaY / scale; // Inverted because y-axis is flipped
+
+    updateViewport(prev => ({
+      ...prev,
+      offsetX: prev.offsetX + mathDeltaX,
+      offsetY: prev.offsetY + mathDeltaY
+    }));
+
+    setDragStart({ x: e.clientX, y: e.clientY });
+  }, [isDragging, dragStart, scale]);
+
+  const handleMouseUp = useCallback(() => {
+    setIsDragging(false);
+  }, []);
+
+  const handleMouseLeave = useCallback(() => {
+    setIsDragging(false);
+  }, []);
+
+  // Wheel event handler for zooming
+  const handleWheel = useCallback((e: React.WheelEvent<SVGSVGElement>) => {
+    e.preventDefault();
+
+    const scaleFactor = e.deltaY > 0 ? 0.9 : 1.1;
+    const newZoomLevel = Math.max(0.1, Math.min(50, viewport.zoomLevel * scaleFactor));
+
+    if (newZoomLevel === viewport.zoomLevel) return;
+
+    // Get mouse position in math coordinates before zoom
+    const mouseScreenCoords = { x: e.clientX, y: e.clientY };
+    const svgRect = svgRef.current?.getBoundingClientRect();
+    if (!svgRect) return;
+
+    const mouseX = mouseScreenCoords.x - svgRect.left;
+    const mouseY = mouseScreenCoords.y - svgRect.top;
+    const mathCoords = toMathCoords(mouseX, mouseY);
+
+    // Update zoom
+    updateViewport(prev => {
+      const newViewport = { ...prev, zoomLevel: newZoomLevel };
+
+      // Calculate new scale
+      const newScale = baseScale * newZoomLevel;
+
+      // Adjust offset to zoom toward mouse position
+      const zoomFactor = newZoomLevel / prev.zoomLevel;
+      newViewport.offsetX = mathCoords.x - (mathCoords.x - prev.offsetX) * zoomFactor;
+      newViewport.offsetY = mathCoords.y - (mathCoords.y - prev.offsetY) * zoomFactor;
+
+      return newViewport;
+    });
+  }, [viewport.zoomLevel, baseScale, toMathCoords]);
+
+  // Keyboard shortcuts (only when SVG is focused or with Ctrl/Cmd)
+  const handleKeyDown = useCallback((e: KeyboardEvent) => {
+    // Only handle keyboard shortcuts if:
+    // 1. The SVG element is focused, OR
+    // 2. Ctrl/Cmd key is pressed (for global shortcuts)
+    if (!svgRef.current ||
+        (document.activeElement !== svgRef.current && !e.ctrlKey && !e.metaKey)) {
+      return;
+    }
+
+    const step = 0.5 / viewport.zoomLevel; // Pan step size
+    let newViewport = { ...viewport };
+
+    switch (e.key) {
+      case 'ArrowUp':
+        newViewport.offsetY += step;
+        break;
+      case 'ArrowDown':
+        newViewport.offsetY -= step;
+        break;
+      case 'ArrowLeft':
+        newViewport.offsetX -= step;
+        break;
+      case 'ArrowRight':
+        newViewport.offsetX += step;
+        break;
+      case '+':
+      case '=':
+        if (e.ctrlKey || e.metaKey) {
+          newViewport.zoomLevel = Math.min(50, newViewport.zoomLevel * 1.2);
+        }
+        break;
+      case '-':
+        if (e.ctrlKey || e.metaKey) {
+          newViewport.zoomLevel = Math.max(0.1, newViewport.zoomLevel * 0.8);
+        }
+        break;
+      case 'r':
+      case 'R':
+        if (e.ctrlKey || e.metaKey || document.activeElement === svgRef.current) {
+          // Reset view
+          newViewport = { offsetX: 0, offsetY: 0, zoomLevel: 1 };
+        }
+        break;
+      default:
+        return;
+    }
+
+    updateViewport(newViewport);
+    if (e.key !== 'r' && e.key !== 'R') {
+      e.preventDefault();
+    }
+  }, [viewport]);
+
+  // Add keyboard event listener
+  useEffect(() => {
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleKeyDown]);
+
+  // Helper functions for external control
+  const resetView = useCallback(() => {
+    updateViewport({ offsetX: 0, offsetY: 0, zoomLevel: 1 });
+  }, []);
+
+  const zoomIn = useCallback(() => {
+    updateViewport(prev => ({ ...prev, zoomLevel: Math.min(50, prev.zoomLevel * 1.2) }));
+  }, []);
+
+  const zoomOut = useCallback(() => {
+    updateViewport(prev => ({ ...prev, zoomLevel: Math.max(0.1, prev.zoomLevel * 0.8) }));
+  }, []);
+
+
   const gridLines = useMemo(() => {
     const lines = [];
 
-    // Vertical lines
-    for (let i = -range; i <= range; i++) {
-      const screenX = toScreenCoords(i, 0).x;
-      lines.push(
-        <line
-          key={`v-${i}`}
-          x1={screenX}
-          y1={0}
-          x2={screenX}
-          y2={height}
-          stroke={i === 0 ? '#333' : '#e0e0e0'}
-          strokeWidth={i === 0 ? 2 : 1}
-        />
-      );
+    // Calculate visible range in math coordinates
+    const topLeft = toMathCoords(0, 0);
+    const bottomRight = toMathCoords(width, height);
 
-      // X-axis labels
-      if (i !== 0) {
+    // Calculate grid step size based on zoom level
+    const baseStep = 1;
+    let stepSize = baseStep;
+
+    // Adjust step size for zoom levels
+    if (viewport.zoomLevel < 0.5) {
+      stepSize = 5;
+    } else if (viewport.zoomLevel < 0.2) {
+      stepSize = 10;
+    } else if (viewport.zoomLevel > 5) {
+      stepSize = 0.5;
+    } else if (viewport.zoomLevel > 10) {
+      stepSize = 0.25;
+    }
+
+    // Calculate grid bounds with some padding
+    const padding = stepSize * 2;
+    const minX = Math.floor((Math.min(topLeft.x, bottomRight.x) - padding) / stepSize) * stepSize;
+    const maxX = Math.ceil((Math.max(topLeft.x, bottomRight.x) + padding) / stepSize) * stepSize;
+    const minY = Math.floor((Math.min(topLeft.y, bottomRight.y) - padding) / stepSize) * stepSize;
+    const maxY = Math.ceil((Math.max(topLeft.y, bottomRight.y) + padding) / stepSize) * stepSize;
+
+    // Ensure origin (0,0) is always included
+    const finalMinX = Math.min(minX, 0);
+    const finalMaxX = Math.max(maxX, 0);
+    const finalMinY = Math.min(minY, 0);
+    const finalMaxY = Math.max(maxY, 0);
+
+    // Vertical lines
+    for (let x = finalMinX; x <= finalMaxX; x += stepSize) {
+      const screenX = toScreenCoords(x, 0).x;
+
+      // Only draw lines that are visible
+      if (screenX >= -50 && screenX <= width + 50) {
+        const isMainAxis = Math.abs(x) < stepSize / 1000; // Use very small tolerance for origin
         lines.push(
-          <text
-            key={`vx-${i}`}
-            x={screenX}
-            y={center + 15}
-            textAnchor="middle"
-            fontSize="12"
-            fill="#666"
-          >
-            {i}
-          </text>
+          <line
+            key={`v-${x}`}
+            x1={screenX}
+            y1={0}
+            x2={screenX}
+            y2={height}
+            stroke={isMainAxis ? '#333' : '#e0e0e0'}
+            strokeWidth={isMainAxis ? 2 : 1}
+          />
         );
+
+        // X-axis labels (skip origin since we have dynamic labels)
+        if (!isMainAxis && Math.abs(x) >= stepSize / 2) {
+          const labelValue = x.toFixed(stepSize < 1 ? 1 : 0);
+          const originScreen = toScreenCoords(0, 0);
+
+          // Position label relative to axis, but keep in bounds
+          const labelY = Math.min(height - 5, Math.max(15, originScreen.y + 15));
+          const labelX = screenX;
+
+          lines.push(
+            <text
+              key={`vx-${x}`}
+              x={labelX}
+              y={labelY}
+              textAnchor="middle"
+              fontSize="12"
+              fill="#666"
+              className="pointer-events-none"
+            >
+              {labelValue}
+            </text>
+          );
+        }
       }
     }
 
     // Horizontal lines
-    for (let i = -range; i <= range; i++) {
-      const screenY = toScreenCoords(0, i).y;
-      lines.push(
-        <line
-          key={`h-${i}`}
-          x1={0}
-          y1={screenY}
-          x2={width}
-          y2={screenY}
-          stroke={i === 0 ? '#333' : '#e0e0e0'}
-          strokeWidth={i === 0 ? 2 : 1}
-        />
-      );
+    for (let y = finalMinY; y <= finalMaxY; y += stepSize) {
+      const screenY = toScreenCoords(0, y).y;
 
-      // Y-axis labels
-      if (i !== 0) {
+      // Only draw lines that are visible
+      if (screenY >= -50 && screenY <= height + 50) {
+        const isMainAxis = Math.abs(y) < stepSize / 1000; // Use very small tolerance for origin
         lines.push(
-          <text
-            key={`hy-${i}`}
-            x={center - 15}
-            y={screenY + 5}
-            textAnchor="middle"
-            fontSize="12"
-            fill="#666"
-          >
-            {i}i
-          </text>
+          <line
+            key={`h-${y}`}
+            x1={0}
+            y1={screenY}
+            x2={width}
+            y2={screenY}
+            stroke={isMainAxis ? '#333' : '#e0e0e0'}
+            strokeWidth={isMainAxis ? 2 : 1}
+          />
         );
+
+        // Y-axis labels (skip origin since we have dynamic labels)
+        if (!isMainAxis && Math.abs(y) >= stepSize / 2) {
+          const labelValue = y.toFixed(stepSize < 1 ? 1 : 0);
+          const originScreen = toScreenCoords(0, 0);
+
+          // Position label relative to axis, but keep in bounds
+          const labelX = Math.min(width - 5, Math.max(20, originScreen.x - 20));
+          const labelY = screenY + 5;
+
+          lines.push(
+            <text
+              key={`hy-${y}`}
+              x={labelX}
+              y={labelY}
+              textAnchor="middle"
+              fontSize="12"
+              fill="#666"
+              className="pointer-events-none"
+            >
+              {labelValue}i
+            </text>
+          );
+        }
       }
     }
 
     return lines;
-  }, [width, height, range, scale, center]);
+  }, [width, height, scale, center, viewport, toMathCoords, toScreenCoords]);
 
   const renderPoint = (point: Point, index: number) => {
     const screen = toScreenCoords(point.x, point.y);
@@ -326,9 +558,97 @@ const ArgandDiagram: React.FC<ArgandDiagramProps> = ({
   };
 
   return (
-    <div className="argand-diagram">
-      <svg width={width} height={height} className="border border-gray-300">
+    <div className="argand-diagram relative">
+      {/* Controls overlay */}
+      <div className="absolute top-2 right-2 bg-white bg-opacity-90 rounded shadow-md p-2 z-10">
+        <div className="text-xs font-mono text-gray-600 mb-2">
+          Zoom: {(viewport.zoomLevel * 100).toFixed(0)}%
+        </div>
+        <div className="flex gap-1">
+          <button
+            onClick={zoomIn}
+            className="px-2 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600"
+            title="Zoom In (+)"
+          >
+            +
+          </button>
+          <button
+            onClick={zoomOut}
+            className="px-2 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600"
+            title="Zoom Out (-)"
+          >
+            −
+          </button>
+          <button
+            onClick={resetView}
+            className="px-2 py-1 text-xs bg-gray-500 text-white rounded hover:bg-gray-600"
+            title="Reset View (R)"
+          >
+            ↺
+          </button>
+        </div>
+        <div className="text-xs text-gray-500 mt-2">
+          <div>Drag to pan</div>
+          <div>Scroll to zoom</div>
+          <div>Click diagram + arrows to pan</div>
+          <div>Ctrl+/- to zoom</div>
+          <div>Ctrl+R to reset</div>
+        </div>
+      </div>
+
+      <svg
+        ref={svgRef}
+        width={width}
+        height={height}
+        className="border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-400"
+        style={{ cursor: isDragging ? 'grabbing' : 'grab' }}
+        tabIndex={0}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseLeave}
+        onWheel={handleWheel}
+        onClick={() => svgRef.current?.focus()}
+      >
         {gridLines}
+
+        {/* Dynamic axes that move with viewport */}
+        <line
+          x1="0"
+          y1={toScreenCoords(0, 0).y}
+          x2={width}
+          y2={toScreenCoords(0, 0).y}
+          stroke="#333"
+          strokeWidth="2"
+        />
+        <line
+          x1={toScreenCoords(0, 0).x}
+          y1="0"
+          x2={toScreenCoords(0, 0).x}
+          y2={height}
+          stroke="#333"
+          strokeWidth="2"
+        />
+
+        {/* Dynamic axis labels that stay in bounds */}
+        <text
+          x={Math.min(width - 20, Math.max(20, toScreenCoords(0, 0).x + 20))}
+          y={Math.min(height - 5, Math.max(15, toScreenCoords(0, 0).y - 5))}
+          fontSize="14"
+          fill="#333"
+          className="pointer-events-none"
+        >
+          Re
+        </text>
+        <text
+          x={Math.min(width - 5, Math.max(5, toScreenCoords(0, 0).x + 5))}
+          y={Math.min(height - 5, Math.max(15, toScreenCoords(0, 0).y - 15))}
+          fontSize="14"
+          fill="#333"
+          className="pointer-events-none"
+        >
+          Im
+        </text>
 
         {/* Render plot regions from expressions first (background) */}
         {plotData?.regions.map((region, index) =>
@@ -346,10 +666,6 @@ const ArgandDiagram: React.FC<ArgandDiagramProps> = ({
           }
           return null;
         })}
-
-        {/* Axes labels */}
-        <text x={width - 20} y={center - 5} fontSize="14" fill="#333">Re</text>
-        <text x={center + 5} y={20} fontSize="14" fill="#333">Im</text>
       </svg>
 
       {hoveredPoint && (
