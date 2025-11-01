@@ -1,4 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import 'katex/dist/katex.min.css';
+import { InlineMath, BlockMath } from 'react-katex';
 
 interface MathJaxRendererProps {
   expression: string;
@@ -7,7 +9,7 @@ interface MathJaxRendererProps {
   onRenderComplete?: () => void;
 }
 
-// Simple MathJax renderer that falls back to plain text for now
+// KaTeX renderer for mathematical expressions
 export const MathJaxRenderer: React.FC<MathJaxRendererProps> = ({
   expression,
   display = false,
@@ -17,8 +19,15 @@ export const MathJaxRenderer: React.FC<MathJaxRendererProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // For now, just return the expression as-is to avoid MathJax loading issues
-  // MathJax can be added later as an enhancement
+  useEffect(() => {
+    if (onRenderComplete) {
+      onRenderComplete();
+    }
+  }, [expression, onRenderComplete]);
+
+  const { convertToLatex } = useLatexConverter();
+  const latexExpression = convertToLatex(expression);
+
   if (error) {
     return (
       <span className={`math-error ${className}`} title={error}>
@@ -27,18 +36,21 @@ export const MathJaxRenderer: React.FC<MathJaxRendererProps> = ({
     );
   }
 
-  return (
-    <span
-      className={`math-expression ${className}`}
-      style={{
-        display: display ? 'block' : 'inline',
-        fontFamily: 'Cambria Math, STIX Two Math, serif',
-        fontSize: display ? '1.1em' : '1em'
-      }}
-    >
-      {expression}
-    </span>
-  );
+  try {
+    const MathComponent = display ? BlockMath : InlineMath;
+
+    return (
+      <span className={`math-expression ${className}`}>
+        <MathComponent math={latexExpression} errorColor={'#cc0000'} />
+      </span>
+    );
+  } catch (err) {
+    return (
+      <span className={`math-error ${className}`} title="Rendering error">
+        {expression}
+      </span>
+    );
+  }
 };
 
 // Hook for converting mathematical expressions to LaTeX
@@ -46,40 +58,18 @@ export const useLatexConverter = () => {
   const convertToLatex = (expression: string): string => {
     let latex = expression;
 
-    // Replace complex number notation
+    // Replace complex number notation first
     latex = latex.replace(/(\d+)i/g, '$1i');
     latex = latex.replace(/\bi\b/g, 'i');
 
-    // Handle modulus (absolute value) properly - this is more complex
-    // We need to pair opening and closing bars
-    const modulusPairs: number[] = [];
-    let barCount = 0;
+    // Replace inequalities before processing modulus to avoid conflicts
+    latex = latex.replace(/<=/g, ' \\leq ');
+    latex = latex.replace(/>=/g, ' \\geq ');
+    latex = latex.replace(/!=/g, ' \\neq ');
+    latex = latex.replace(/==/g, ' = ');
+    latex = latex.replace(/=/g, ' = ');
 
-    for (let i = 0; i < latex.length; i++) {
-      if (latex[i] === '|') {
-        modulusPairs.push(i);
-        barCount++;
-      }
-    }
-
-    // Replace bars in pairs
-    let result = '';
-    let pairIndex = 0;
-    for (let i = 0; i < latex.length; i++) {
-      if (latex[i] === '|') {
-        if (pairIndex % 2 === 0) {
-          result += '\\left|';
-        } else {
-          result += '\\right|';
-        }
-        pairIndex++;
-      } else {
-        result += latex[i];
-      }
-    }
-    latex = result;
-
-    // Replace common functions
+    // Replace common functions before modulus processing
     latex = latex.replace(/\bRe\(/g, '\\operatorname{Re}(');
     latex = latex.replace(/\bIm\(/g, '\\operatorname{Im}(');
     latex = latex.replace(/\barg\(/g, '\\arg(');
@@ -92,21 +82,58 @@ export const useLatexConverter = () => {
     latex = latex.replace(/\btan\(/g, '\\tan(');
     latex = latex.replace(/\bsqrt\(/g, '\\sqrt{');
 
-    // Replace power operator
-    latex = latex.replace(/\^/g, '^');
+    // Handle modulus (absolute value) properly - convert to LaTeX notation
+    // Stack-based approach for nested modulus
+    const modulusStack: number[] = [];
+    let result = '';
+    let i = 0;
 
-    // Replace inequalities with proper spacing
-    latex = latex.replace(/<=/g, '\\leq');
-    latex = latex.replace(/>=/g, '\\geq');
-    latex = latex.replace(/!=/g, '\\neq');
-    latex = latex.replace(/==/g, '=');
+    while (i < latex.length) {
+      if (latex[i] === '|') {
+        // If this is an opening bar (no matching closing bar found yet)
+        let hasMatchingClosing = false;
+        let tempDepth = 1;
+
+        for (let j = i + 1; j < latex.length; j++) {
+          if (latex[j] === '|') {
+            tempDepth--;
+            if (tempDepth === 0) {
+              hasMatchingClosing = true;
+              break;
+            }
+          }
+        }
+
+        if (hasMatchingClosing && modulusStack.length === 0) {
+          // This is an opening bar
+          modulusStack.push(i);
+          result += '\\left|';
+        } else if (modulusStack.length > 0) {
+          // This is a closing bar
+          modulusStack.pop();
+          result += '\\right|';
+        } else {
+          // Unmatched bar, just add it
+          result += '|';
+        }
+        i++;
+      } else {
+        result += latex[i];
+        i++;
+      }
+    }
+    latex = result;
 
     // Handle complex numbers with i
     latex = latex.replace(/([a-zA-Z])i/g, '$1i');
+    latex = latex.replace(/(\d)i/g, '$1i');
 
-    // Fix function calls
-    latex = latex.replace(/(\w+)\{/g, '$1\\{');
-    latex = latex.replace(/\}([^\s])/g, '\\}$1');
+    // Clean up extra spaces around braces
+    latex = latex.replace(/\\{\s*/g, '\\{');
+    latex = latex.replace(/\s*\\}/g, '\\}');
+
+    // Clean up multiple spaces
+    latex = latex.replace(/\s+/g, ' ').trim();
 
     return latex;
   };
@@ -124,29 +151,40 @@ export const useLatexConverter = () => {
   return { convertToLatex, simplifyExpression };
 };
 
-// Component for displaying complex expressions with proper formatting
+// Component for displaying complex expressions with proper formatting using KaTeX
 export const ComplexExpressionDisplay: React.FC<{
   expression: string;
   className?: string;
   simplify?: boolean;
-}> = ({ expression, className = '', simplify = false }) => {
+  display?: boolean;
+}> = ({ expression, className = '', simplify = false, display = false }) => {
   const { convertToLatex, simplifyExpression } = useLatexConverter();
 
   const latexExpression = simplify
     ? simplifyExpression(convertToLatex(expression))
     : convertToLatex(expression);
 
-  return (
-    <span
-      className={`complex-expression ${className}`}
-      style={{
-        fontFamily: 'Cambria Math, STIX Two Math, serif',
-        fontSize: '1em'
-      }}
-    >
-      {latexExpression}
-    </span>
-  );
+  try {
+    const MathComponent = display ? BlockMath : InlineMath;
+
+    return (
+      <span className={`complex-expression ${className}`}>
+        <MathComponent
+          math={latexExpression}
+          errorColor={'#cc0000'}
+          renderError={(error) => {
+            return <span className="text-red-500" title={error.message}>{expression}</span>;
+          }}
+        />
+      </span>
+    );
+  } catch (err) {
+    return (
+      <span className={`complex-expression ${className} text-red-500`} title="Rendering error">
+        {expression}
+      </span>
+    );
+  }
 };
 
 export default MathJaxRenderer;

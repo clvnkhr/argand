@@ -16,16 +16,18 @@
     "test:coverage": "bun test --coverage"
   },
   "dependencies": {
+    "@types/prop-types": "^15.7.15",
+    "katex": "^0.16.8",
+    "mathjs": "^12.2.0",
+    "prop-types": "^15.8.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "react-katex": "^3.0.1",
-    "katex": "^0.16.8",
-    "mathjs": "^12.2.0"
+    "react-katex": "^3.0.1"
   },
   "devDependencies": {
+    "@types/katex": "^0.16.7",
     "@types/react": "^18.2.43",
     "@types/react-dom": "^18.2.17",
-    "@types/katex": "^0.16.7",
     "@typescript-eslint/eslint-plugin": "^6.14.0",
     "@typescript-eslint/parser": "^6.14.0",
     "@vitejs/plugin-react": "^4.2.1",
