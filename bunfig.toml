@@ -1,0 +1,5 @@
+[test]
+coverage = true
+coverageDir = "./coverage"
+coverageThreshold = 0.8
+preload = ["./tests/setup.ts"]
