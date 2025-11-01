@@ -13,6 +13,13 @@ export interface PlotRegion {
 
 export type { PlotConfig };
 
+export interface CurveState {
+  endpoints: Point[]; // First and last points of each curve
+  intermediatePoints: Point[][]; // Periodic points along longer curves
+  lastUpdate: number; // Timestamp for cache invalidation
+  viewportHash: string; // Hash of viewport when curves were computed
+}
+
 export interface PlottingResult {
   regions: PlotRegion[];
   error?: string;
@@ -26,6 +33,9 @@ export interface PlottingResult {
 export class HybridPlotter {
   private evaluator: ExpressionEvaluator;
   private config: PlotConfig;
+
+  // Curve state tracking for continuity across viewport changes
+  private previousCurves: { [expression: string]: CurveState } = {};
 
   constructor(config: PlotConfig) {
     this.evaluator = new ExpressionEvaluator();
@@ -64,6 +74,78 @@ export class HybridPlotter {
 
   updateConfig(config: Partial<PlotConfig>) {
     this.config = { ...this.config, ...config };
+  }
+
+  // Helper methods for curve state management
+  private getViewportHash(): string {
+    const viewportRange = this.getViewportRange();
+    return `${viewportRange.minX.toFixed(3)},${viewportRange.maxX.toFixed(3)},${viewportRange.minY.toFixed(3)},${viewportRange.maxY.toFixed(3)}`;
+  }
+
+  private extractCurveKeyPoints(curves: Point[][]): { endpoints: Point[]; intermediatePoints: Point[][] } {
+    const endpoints: Point[] = [];
+    const intermediatePoints: Point[][] = [];
+
+    for (const curve of curves) {
+      if (curve.length === 0) continue;
+
+      // Add first and last points as endpoints
+      endpoints.push(curve[0]);
+      if (curve.length > 1) {
+        endpoints.push(curve[curve.length - 1]);
+      }
+
+      // For longer curves, add intermediate points
+      if (curve.length > 20) {
+        const step = Math.floor(curve.length / 5); // Take 5 intermediate points
+        const intermediate: Point[] = [];
+        for (let i = step; i < curve.length - step; i += step) {
+          intermediate.push(curve[i]);
+        }
+        if (intermediate.length > 0) {
+          intermediatePoints.push(intermediate);
+        }
+      }
+    }
+
+    return { endpoints, intermediatePoints };
+  }
+
+  private saveCurveState(expression: string, curves: Point[][]): void {
+    const keyPoints = this.extractCurveKeyPoints(curves);
+    this.previousCurves[expression] = {
+      ...keyPoints,
+      lastUpdate: Date.now(),
+      viewportHash: this.getViewportHash()
+    };
+  }
+
+  private getLegacyStartingPoints(expression: string): Point[] {
+    const previousState = this.previousCurves[expression];
+    if (!previousState) return [];
+
+    const viewportRange = this.getViewportRange();
+    const legacyPoints: Point[] = [];
+
+    // Check endpoints first
+    for (const point of previousState.endpoints) {
+      if (point.x >= viewportRange.minX && point.x <= viewportRange.maxX &&
+          point.y >= viewportRange.minY && point.y <= viewportRange.maxY) {
+        legacyPoints.push(point);
+      }
+    }
+
+    // Then check intermediate points
+    for (const points of previousState.intermediatePoints) {
+      for (const point of points) {
+        if (point.x >= viewportRange.minX && point.x <= viewportRange.maxX &&
+            point.y >= viewportRange.minY && point.y <= viewportRange.maxY) {
+          legacyPoints.push(point);
+        }
+      }
+    }
+
+    return legacyPoints;
   }
 
   // Main plotting function for expressions
@@ -221,7 +303,7 @@ export class HybridPlotter {
     const zeroBasedAst = this.transformToZeroBased(ast);
 
     // Try boundary tracing first for polynomial equalities
-    const boundaryCurves = this.traceBoundary(zeroBasedAst);
+    const boundaryCurves = this.traceBoundary(zeroBasedAst, expression);
 
     if (boundaryCurves.length > 0) {
       regions.push({
@@ -741,7 +823,7 @@ export class HybridPlotter {
     return this.gridSampleInequality(ast, expression);
   }
 
-  private traceBoundary(ast: ASTNode): Point[][] {
+  private traceBoundary(ast: ASTNode, expression?: string): Point[][] {
     const boundaryCurves: Point[][] = [];
 
     // Adaptive step size and max steps based on viewport range
@@ -751,7 +833,7 @@ export class HybridPlotter {
     const maxSteps = Math.max(5000, Math.floor(viewportSize / stepSize * 2)); // Adaptive max steps
 
     // Try to find starting points on the boundary
-    const startingPoints = this.findBoundaryStartingPoints(ast);
+    const startingPoints = this.findBoundaryStartingPoints(ast, expression);
 
     for (const start of startingPoints) {
       // Check if this starting point is too close to an existing curve
@@ -775,6 +857,11 @@ export class HybridPlotter {
           boundaryCurves.push(path);
         }
       }
+    }
+
+    // Save curve state for continuity in future viewport updates
+    if (expression && boundaryCurves.length > 0) {
+      this.saveCurveState(expression, boundaryCurves);
     }
 
     return boundaryCurves;
@@ -807,10 +894,27 @@ export class HybridPlotter {
     return closePoints >= sampleSize * 0.8; // Require higher similarity
   }
 
-  private findBoundaryStartingPoints(ast: ASTNode): Point[] {
+  private findBoundaryStartingPoints(ast: ASTNode, expression?: string): Point[] {
     const startingPoints: Point[] = [];
     const tolerance = 0.05;
 
+    // Phase 1: Add legacy points from previous curves if available
+    if (expression) {
+      const legacyPoints = this.getLegacyStartingPoints(expression);
+      for (const point of legacyPoints) {
+        // Verify legacy points still satisfy the boundary condition
+        if (this.isNearBoundary(ast, point, tolerance * 2)) {
+          const refinedPoint = this.refineBoundaryPoint(ast, point);
+          if (refinedPoint) {
+            startingPoints.push(refinedPoint);
+          } else {
+            startingPoints.push(point);
+          }
+        }
+      }
+    }
+
+    // Phase 2: Grid search for additional starting points
     // Use viewport range instead of fixed range
     const viewportRange = this.getViewportRange();
 
@@ -820,6 +924,13 @@ export class HybridPlotter {
     // Always scan in the same order for consistency
     for (let x = viewportRange.minX; x <= viewportRange.maxX; x += searchStep) {
       for (let y = viewportRange.minY; y <= viewportRange.maxY; y += searchStep) {
+        // Skip points that are too close to existing legacy points
+        const tooClose = startingPoints.some(sp =>
+          Math.sqrt(Math.pow(sp.x - x, 2) + Math.pow(sp.y - y, 2)) < searchStep * 0.5
+        );
+
+        if (tooClose) continue;
+
         if (this.isNearBoundary(ast, { x, y }, tolerance)) {
           const refinedPoint = this.refineBoundaryPoint(ast, { x, y });
           if (refinedPoint) {
