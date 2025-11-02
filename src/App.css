@@ -67,3 +67,92 @@
   color: #666;
   border-top: 1px solid #dee2e6;
 }
+
+/* Argand Diagram responsive colors */
+.diagram-grid-line {
+  stroke: #404040;
+}
+
+.diagram-axis {
+  stroke: #d0d0d0;
+}
+
+.diagram-tick {
+  stroke: #d0d0d0;
+}
+
+.diagram-text-secondary {
+  fill: #b0b0b0;
+}
+
+.diagram-text-primary {
+  fill: #e0e0e0;
+}
+
+.diagram-control-panel {
+  background-color: rgba(31, 41, 55, 0.9);
+  color: #d1d5db;
+}
+
+.diagram-control-text {
+  color: #d1d5db;
+}
+
+.diagram-control-border {
+  border-color: #4b5563;
+}
+
+.diagram-svg-border {
+  border-color: #4b5563;
+}
+
+.diagram-tooltip {
+  background-color: rgba(31, 41, 55, 0.95);
+  border-color: #4b5563;
+  color: #e5e7eb;
+}
+
+@media (prefers-color-scheme: light) {
+  .diagram-grid-line {
+    stroke: #e0e0e0;
+  }
+
+  .diagram-axis {
+    stroke: #333333;
+  }
+
+  .diagram-tick {
+    stroke: #333333;
+  }
+
+  .diagram-text-secondary {
+    fill: #666666;
+  }
+
+  .diagram-text-primary {
+    fill: #333333;
+  }
+
+  .diagram-control-panel {
+    background-color: rgba(255, 255, 255, 0.9);
+    color: #374151;
+  }
+
+  .diagram-control-text {
+    color: #374151;
+  }
+
+  .diagram-control-border {
+    border-color: #d1d5db;
+  }
+
+  .diagram-svg-border {
+    border-color: #d1d5db;
+  }
+
+  .diagram-tooltip {
+    background-color: rgba(255, 255, 255, 0.95);
+    border-color: #d1d5db;
+    color: #1f2937;
+  }
+}

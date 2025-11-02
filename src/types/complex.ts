@@ -76,6 +76,7 @@ export interface PlotConfig {
   backgroundColor: string;
   gridColor: string;
   axisColor: string;
+  tickSize: number; // Size of axis ticks
   // Viewport information for dynamic plotting
   viewportOffsetX?: number;
   viewportOffsetY?: number;

@@ -10,6 +10,7 @@ import './App.css';
 function App() {
   const [expressions, setExpressions] = useState<PlotExpression[]>([]);
   const [viewport, setViewport] = useState({ offsetX: 0, offsetY: 0, zoomLevel: 1 });
+  const [tickCrowding, setTickCrowding] = useState(2); // 1=very sparse, 5=very dense
 
   const config: PlotConfig = {
     width: 700,
@@ -21,7 +22,8 @@ function App() {
     showAxes: true,
     backgroundColor: '#ffffff',
     gridColor: '#e0e0e0',
-    axisColor: '#333333'
+    axisColor: '#333333',
+    tickSize: 6 // Keep the line length fixed
   };
 
   // Generate combined plot data from all visible expressions
@@ -93,6 +95,8 @@ function App() {
             range={config.range}
             config={config}
             onViewportChange={handleViewportChange}
+            tickCrowding={tickCrowding}
+            onTickCrowdingChange={setTickCrowding}
           />
         </div>
 

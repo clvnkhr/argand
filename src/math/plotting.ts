@@ -52,23 +52,27 @@ export class HybridPlotter {
       const baseRange = this.config.range;
       const scaledRange = baseRange / this.config.viewportZoom;
 
+      // Add buffer around viewport for smoother curve rendering
+      const buffer = scaledRange * 0.5; // 50% buffer around visible area
+
       return {
-        minX: this.config.viewportOffsetX - scaledRange,
-        maxX: this.config.viewportOffsetX + scaledRange,
-        minY: this.config.viewportOffsetY - scaledRange,
-        maxY: this.config.viewportOffsetY + scaledRange,
-        range: scaledRange
+        minX: this.config.viewportOffsetX - scaledRange - buffer,
+        maxX: this.config.viewportOffsetX + scaledRange + buffer,
+        minY: this.config.viewportOffsetY - scaledRange - buffer,
+        maxY: this.config.viewportOffsetY + scaledRange + buffer,
+        range: scaledRange + buffer
       };
     }
 
     // Fallback to original behavior if no viewport info
     const range = this.config.range;
+    const buffer = range * 0.5; // 50% buffer for consistency
     return {
-      minX: -range,
-      maxX: range,
-      minY: -range,
-      maxY: range,
-      range
+      minX: -range - buffer,
+      maxX: range + buffer,
+      minY: -range - buffer,
+      maxY: range + buffer,
+      range: range + buffer
     };
   }
 
@@ -95,9 +99,10 @@ export class HybridPlotter {
         endpoints.push(curve[curve.length - 1]);
       }
 
-      // For longer curves, add intermediate points
-      if (curve.length > 20) {
-        const step = Math.floor(curve.length / 5); // Take 5 intermediate points
+      // For curves with 3+ points, add intermediate points for better continuity
+      if (curve.length >= 3) {
+        const numIntermediatePoints = Math.min(10, Math.max(1, Math.floor(curve.length / 3))); // At least 1 intermediate point
+        const step = Math.max(1, Math.floor(curve.length / (numIntermediatePoints + 1)));
         const intermediate: Point[] = [];
         for (let i = step; i < curve.length - step; i += step) {
           intermediate.push(curve[i]);
@@ -126,20 +131,27 @@ export class HybridPlotter {
 
     const viewportRange = this.getViewportRange();
     const legacyPoints: Point[] = [];
+    const extensionBuffer = viewportRange.range * 0.1; // 10% extension beyond viewport
 
-    // Check endpoints first
+    // Extended viewport boundaries for edge cases
+    const extendedMinX = viewportRange.minX - extensionBuffer;
+    const extendedMaxX = viewportRange.maxX + extensionBuffer;
+    const extendedMinY = viewportRange.minY - extensionBuffer;
+    const extendedMaxY = viewportRange.maxY + extensionBuffer;
+
+    // Check endpoints first with extended boundaries
     for (const point of previousState.endpoints) {
-      if (point.x >= viewportRange.minX && point.x <= viewportRange.maxX &&
-          point.y >= viewportRange.minY && point.y <= viewportRange.maxY) {
+      if (point.x >= extendedMinX && point.x <= extendedMaxX &&
+          point.y >= extendedMinY && point.y <= extendedMaxY) {
         legacyPoints.push(point);
       }
     }
 
-    // Then check intermediate points
+    // Then check intermediate points with extended boundaries
     for (const points of previousState.intermediatePoints) {
       for (const point of points) {
-        if (point.x >= viewportRange.minX && point.x <= viewportRange.maxX &&
-            point.y >= viewportRange.minY && point.y <= viewportRange.maxY) {
+        if (point.x >= extendedMinX && point.x <= extendedMaxX &&
+            point.y >= extendedMinY && point.y <= extendedMaxY) {
           legacyPoints.push(point);
         }
       }
@@ -289,6 +301,9 @@ export class HybridPlotter {
     // Check if this is a simple linear modulus equality like |z| = |z-1|
     const analyticBoundary = this.tryAnalyticSolution(ast);
     if (analyticBoundary) {
+      // Save curve state for continuity even with analytical solutions
+      this.saveCurveState(expression, analyticBoundary);
+
       regions.push({
         points: [],
         boundary: analyticBoundary,
@@ -898,18 +913,36 @@ export class HybridPlotter {
     const startingPoints: Point[] = [];
     const tolerance = 0.05;
 
-    // Phase 1: Add legacy points from previous curves if available
+    // Phase 1: Add intelligent starting points based on expression patterns
+    const intelligentPoints = this.generateIntelligentStartingPoints(ast, expression);
+
+    for (const point of intelligentPoints) {
+      if (this.isNearBoundary(ast, point, tolerance * 3)) {
+        const refinedPoint = this.refineBoundaryPoint(ast, point);
+        if (refinedPoint) {
+          startingPoints.push(refinedPoint);
+        } else {
+          startingPoints.push(point);
+        }
+      }
+    }
+
+    // Phase 2: Add legacy points from previous curves if available
     if (expression) {
       const legacyPoints = this.getLegacyStartingPoints(expression);
+
       for (const point of legacyPoints) {
-        // Verify legacy points still satisfy the boundary condition
-        if (this.isNearBoundary(ast, point, tolerance * 2)) {
+        // Verify legacy points still satisfy the boundary condition with more lenient tolerance
+        if (this.isNearBoundary(ast, point, tolerance * 5)) {
           const refinedPoint = this.refineBoundaryPoint(ast, point);
           if (refinedPoint) {
             startingPoints.push(refinedPoint);
           } else {
             startingPoints.push(point);
           }
+        } else {
+          // Even if not near boundary, still include the point as fallback
+          startingPoints.push(point);
         }
       }
     }
@@ -918,8 +951,8 @@ export class HybridPlotter {
     // Use viewport range instead of fixed range
     const viewportRange = this.getViewportRange();
 
-    // Use deterministic grid search with fixed seed-like behavior
-    const searchStep = viewportRange.range / 20; // Slightly coarser for stability
+    // Use balanced grid search - good compromise between performance and coverage
+    const searchStep = viewportRange.range / 35; // ~36x36 grid (30% reduction from 51x51)
 
     // Always scan in the same order for consistency
     for (let x = viewportRange.minX; x <= viewportRange.maxX; x += searchStep) {
@@ -947,7 +980,7 @@ export class HybridPlotter {
       // Try circles centered at origin using viewport range, extended for zoom-out
       const maxRadius = Math.max(viewportRange.range * 2, 10); // Search much further when zoomed out
       for (let radius = 0.5; radius <= maxRadius; radius += 0.5) {
-        for (let angle = 0; angle < 2 * Math.PI; angle += Math.PI / 8) {
+        for (let angle = 0; angle < 2 * Math.PI; angle += Math.PI / 16) { // Higher angular resolution
           const x = radius * Math.cos(angle);
           const y = radius * Math.sin(angle);
           if (this.isNearBoundary(ast, { x, y }, tolerance * 2)) {
@@ -989,13 +1022,19 @@ export class HybridPlotter {
       }
     }
 
-    return this.deduplicatePoints(startingPoints).slice(0, 6);
+    const deduplicated = this.deduplicatePoints(startingPoints);
+
+    // Smart selection: prioritize spatially diverse points with balanced limit
+    if (deduplicated.length > 35) {
+      return this.selectDiversePoints(deduplicated, 35); // Select up to 35 diverse points (30% reduction from 50)
+    }
+    return deduplicated; // Use all points if less than 35
   }
 
   // Refine a point to be closer to the actual boundary using Newton's method
   private refineBoundaryPoint(ast: ASTNode, point: Point): Point | null {
-    const maxIterations = 20; // More iterations for better convergence
-    const tolerance = 0.001; // Tighter precision for better boundary detection
+    const maxIterations = 35; // Balanced iterations - good precision with reasonable performance
+    const tolerance = 0.0003; // Good precision for visual continuity
     let current = { ...point };
 
     for (let i = 0; i < maxIterations; i++) {
@@ -1232,14 +1271,14 @@ export class HybridPlotter {
         // Evaluate at corners of cell
         const corners = [
           this.evaluateAtPoint(ast, x, y),
-          this.evaluateAtPoint(ast, x + stepSize, y),
-          this.evaluateAtPoint(ast, x + stepSize, y + stepSize),
-          this.evaluateAtPoint(ast, x, y + stepSize)
+          this.evaluateAtPoint(ast, x + stepSizeX, y),
+          this.evaluateAtPoint(ast, x + stepSizeX, y + stepSizeY),
+          this.evaluateAtPoint(ast, x, y + stepSizeY)
         ];
 
         // Check if contour passes through this cell
         if (this.contourCrossesCell(corners, level)) {
-          const cellPoints = this.interpolateContour(corners, x, y, stepSize, level);
+          const cellPoints = this.interpolateContour(corners, x, y, (stepSizeX + stepSizeY) / 2, level);
           contour.push(...cellPoints);
         }
       }
@@ -1439,6 +1478,209 @@ export class HybridPlotter {
     }
 
     return deduplicated;
+  }
+
+  // Select spatially diverse points to ensure good coverage of different curve components
+  private selectDiversePoints(points: Point[], maxPoints: number): Point[] {
+    if (points.length <= maxPoints) return points;
+
+    const selected: Point[] = [];
+    const remaining = [...points];
+
+    // Start with the point closest to origin as anchor
+    remaining.sort((a, b) => (a.x * a.x + a.y * a.y) - (b.x * b.x + b.y * b.y));
+    selected.push(remaining.shift()!);
+
+    // Greedy selection: always pick the point farthest from existing selected points
+    while (selected.length < maxPoints && remaining.length > 0) {
+      let farthestIndex = 0;
+      let farthestDistance = 0;
+
+      for (let i = 0; i < remaining.length; i++) {
+        const point = remaining[i];
+        let minDistance = Infinity;
+
+        // Find distance to closest selected point
+        for (const selectedPoint of selected) {
+          const distance = Math.sqrt(
+            Math.pow(point.x - selectedPoint.x, 2) + Math.pow(point.y - selectedPoint.y, 2)
+          );
+          minDistance = Math.min(minDistance, distance);
+        }
+
+        // Select the point with maximum minimum distance
+        if (minDistance > farthestDistance) {
+          farthestDistance = minDistance;
+          farthestIndex = i;
+        }
+      }
+
+      selected.push(remaining.splice(farthestIndex, 1)[0]);
+    }
+
+    return selected;
+  }
+
+  // Generate intelligent starting points based on expression patterns
+  private generateIntelligentStartingPoints(ast: ASTNode, expression?: string): Point[] {
+    const points: Point[] = [];
+    const viewportRange = this.getViewportRange();
+
+    if (!expression) return points;
+
+    // Pattern 1: |Re(z)| = constant -> vertical lines
+    if (expression.includes('|Re(z)|') || expression.includes('abs(Re(z))')) {
+      const match = expression.match(/=\s*([+-]?\d*\.?\d+)/);
+      if (match) {
+        const value = parseFloat(match[1]);
+        // Generate balanced points along vertical lines - moderate coverage with legacy continuity
+        for (let y = viewportRange.minY; y <= viewportRange.maxY; y += (viewportRange.maxY - viewportRange.minY) / 12) {
+          points.push({ x: value, y });
+          points.push({ x: -value, y }); // Both positive and negative
+        }
+      }
+    }
+
+    // Pattern 2: |Im(z)| = constant -> horizontal lines
+    if (expression.includes('|Im(z)|') || expression.includes('abs(Im(z))')) {
+      const match = expression.match(/=\s*([+-]?\d*\.?\d+)/);
+      if (match) {
+        const value = parseFloat(match[1]);
+        // Generate balanced points along horizontal lines - moderate coverage with legacy continuity
+        for (let x = viewportRange.minX; x <= viewportRange.maxX; x += (viewportRange.maxX - viewportRange.minX) / 12) {
+          points.push({ x, y: value });
+          points.push({ x, y: -value }); // Both positive and negative
+        }
+      }
+    }
+
+    // Pattern 2.5: |Re(z)+Im(z)| = constant -> diagonal lines
+    if (expression.includes('|Re(z)+Im(z)|') || expression.includes('abs(Re(z)+Im(z))')) {
+      const match = expression.match(/=\s*([+-]?\d*\.?\d+)/);
+      if (match) {
+        const value = parseFloat(match[1]);
+        // Generate points along diagonal line x + y = value and x + y = -value
+        const step = Math.max(viewportRange.range / 25, 0.15); // Moderate density
+
+        // Line 1: x + y = value (y = value - x)
+        for (let x = viewportRange.minX; x <= viewportRange.maxX; x += step) {
+          const y = value - x;
+          points.push({ x, y });
+        }
+
+        // Line 2: x + y = -value (y = -value - x)
+        for (let x = viewportRange.minX; x <= viewportRange.maxX; x += step) {
+          const y = -value - x;
+          points.push({ x, y });
+        }
+      }
+    }
+
+    // Pattern 2.6: |Re(z)-Im(z)| = constant -> other diagonal lines
+    if (expression.includes('|Re(z)-Im(z)|') || expression.includes('abs(Re(z)-Im(z))')) {
+      const match = expression.match(/=\s*([+-]?\d*\.?\d+)/);
+      if (match) {
+        const value = parseFloat(match[1]);
+        // Generate points along diagonal line x - y = value and x - y = -value
+        const step = Math.max(viewportRange.range / 25, 0.15); // Moderate density
+
+        // Line 1: x - y = value (y = x - value)
+        for (let x = viewportRange.minX; x <= viewportRange.maxX; x += step) {
+          const y = x - value;
+          points.push({ x, y });
+        }
+
+        // Line 2: x - y = -value (y = x + value)
+        for (let x = viewportRange.minX; x <= viewportRange.maxX; x += step) {
+          const y = x + value;
+          points.push({ x, y });
+        }
+      }
+    }
+
+    // Pattern 3: |z - a| = r -> circles
+    if (expression.includes('|z') && expression.includes('|')) {
+      // Generate points around circles at different angles
+      for (let radius = 1; radius <= 5; radius++) {
+        for (let angle = 0; angle < 2 * Math.PI; angle += Math.PI / 8) {
+          points.push({
+            x: radius * Math.cos(angle),
+            y: radius * Math.sin(angle)
+          });
+        }
+      }
+    }
+
+    // Pattern 4: Re(z) = constant or Im(z) = constant
+    if (expression.includes('Re(z)') || expression.includes('Im(z)')) {
+      const match = expression.match(/=\s*([+-]?\d*\.?\d+)/);
+      if (match) {
+        const value = parseFloat(match[1]);
+        if (expression.includes('Re(z)')) {
+          // Vertical line
+          for (let y = viewportRange.minY; y <= viewportRange.maxY; y += (viewportRange.maxY - viewportRange.minY) / 5) {
+            points.push({ x: value, y });
+          }
+        } else {
+          // Horizontal line
+          for (let x = viewportRange.minX; x <= viewportRange.maxX; x += (viewportRange.maxX - viewportRange.minX) / 5) {
+            points.push({ x, y: value });
+          }
+        }
+      }
+    }
+
+    // Pattern 4.5: General linear combinations a*Re(z) + b*Im(z) = constant
+    if (expression.includes('Re(z)') && expression.includes('Im(z)') &&
+        (expression.includes('+') || expression.includes('-'))) {
+      // Try to match patterns like a*Re(z) + b*Im(z) = c
+      const linearMatch = expression.match(/([+-]?\d*\.?\d*)\*?Re\(z\)\s*([+-])\s*([+-]?\d*\.?\d*)\*?Im\(z\)\s*=\s*([+-]?\d*\.?\d+)/);
+      if (linearMatch) {
+        const a = parseFloat(linearMatch[1] || '1');
+        const op = linearMatch[2];
+        const b = parseFloat(linearMatch[3] || '1');
+        const c = parseFloat(linearMatch[4]);
+
+        const actualB = op === '-' ? -b : b;
+
+        // Generate points along the line a*x + b*y = c
+        const step = Math.max(viewportRange.range / 25, 0.15);
+
+        for (let x = viewportRange.minX; x <= viewportRange.maxX; x += step) {
+          if (actualB !== 0) {
+            const y = (c - a * x) / actualB;
+            points.push({ x, y });
+          }
+        }
+
+        // Also generate points solving for x if b is small
+        if (Math.abs(actualB) < 0.1 && a !== 0) {
+          for (let y = viewportRange.minY; y <= viewportRange.maxY; y += step) {
+            const x = (c - actualB * y) / a;
+            points.push({ x, y });
+          }
+        }
+      }
+    }
+
+    // Pattern 5: Polynomial expressions -> generate points near critical areas
+    if (expression.includes('z^') || expression.includes('z*z') || expression.includes('z**')) {
+      // Grid around origin and key points
+      for (let x = -3; x <= 3; x += 1.5) {
+        for (let y = -3; y <= 3; y += 1.5) {
+          points.push({ x, y });
+        }
+      }
+    }
+
+    // Filter points to be within extended viewport
+    const extensionBuffer = viewportRange.range * 0.5;
+    return points.filter(p =>
+      p.x >= viewportRange.minX - extensionBuffer &&
+      p.x <= viewportRange.maxX + extensionBuffer &&
+      p.y >= viewportRange.minY - extensionBuffer &&
+      p.y <= viewportRange.maxY + extensionBuffer
+    );
   }
 
   private calculateBoundingBox(regions: PlotRegion[]): { min: Point; max: Point } {
