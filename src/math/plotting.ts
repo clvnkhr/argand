@@ -1,4 +1,4 @@
-import { ASTNode } from '../types/expressions';
+import { ASTNode, PlotExpression } from '../types/expressions';
 import { ComplexNumber, PlotConfig, Point } from '../types/complex';
 import { ExpressionEvaluator } from './evaluator';
 
@@ -9,6 +9,7 @@ export interface PlotRegion {
   value?: number;
   expression: string;
   color?: string;
+  lineThickness?: number;
 }
 
 export type { PlotConfig };
@@ -161,7 +162,7 @@ export class HybridPlotter {
   }
 
   // Main plotting function for expressions
-  plotExpression(ast: ASTNode, expression: string): PlottingResult {
+  plotExpression(ast: ASTNode, expression: string, expressionConfig?: PlotExpression): PlottingResult {
     const startTime = performance.now();
 
     try {
@@ -172,19 +173,19 @@ export class HybridPlotter {
 
       switch (expressionType) {
         case 'equality':
-          regions = this.plotEquality(ast, expression);
+          regions = this.plotEquality(ast, expression, expressionConfig);
           break;
         case 'inequality':
-          regions = this.plotInequality(ast, expression);
+          regions = this.plotInequality(ast, expression, expressionConfig);
           break;
         case 'point':
-          regions = this.plotPoint(ast, expression);
+          regions = this.plotPoint(ast, expression, expressionConfig);
           break;
         case 'complex':
-          regions = this.plotComplexExpression(ast, expression);
+          regions = this.plotComplexExpression(ast, expression, expressionConfig);
           break;
         default:
-          regions = this.plotGeneric(ast, expression);
+          regions = this.plotGeneric(ast, expression, expressionConfig);
       }
 
       const endTime = performance.now();
@@ -295,7 +296,7 @@ export class HybridPlotter {
     return ast;
   }
 
-  private plotEquality(ast: ASTNode, expression: string): PlotRegion[] {
+  private plotEquality(ast: ASTNode, expression: string, expressionConfig?: PlotExpression): PlotRegion[] {
     const regions: PlotRegion[] = [];
 
     // Check if this is a simple linear modulus equality like |z| = |z-1|
@@ -308,7 +309,9 @@ export class HybridPlotter {
         points: [],
         boundary: analyticBoundary,
         type: 'boundary',
-        expression
+        expression,
+        color: expressionConfig?.color,
+        lineThickness: expressionConfig?.lineThickness,
       });
       return regions;
     }
@@ -325,7 +328,9 @@ export class HybridPlotter {
         points: [],
         boundary: boundaryCurves,
         type: 'boundary',
-        expression
+        expression,
+        color: expressionConfig?.color,
+        lineThickness: expressionConfig?.lineThickness,
       });
     } else {
       // Fallback to contour detection with higher resolution
@@ -334,7 +339,9 @@ export class HybridPlotter {
         points: [],
         boundary: contourPoints,
         type: 'boundary',
-        expression
+        expression,
+        color: expressionConfig?.color,
+        lineThickness: expressionConfig?.lineThickness,
       });
     }
 
@@ -784,23 +791,23 @@ export class HybridPlotter {
     return [points];
   }
 
-  private plotInequality(ast: ASTNode, expression: string): PlotRegion[] {
+  private plotInequality(ast: ASTNode, expression: string, expressionConfig?: PlotExpression): PlotRegion[] {
     const regions: PlotRegion[] = [];
 
     if (this.config.adaptiveSampling) {
       // Use adaptive sampling for better performance
-      const adaptiveRegions = this.adaptiveSampleInequality(ast, expression);
+      const adaptiveRegions = this.adaptiveSampleInequality(ast, expression, expressionConfig);
       regions.push(...adaptiveRegions);
     } else {
       // Use regular grid sampling
-      const gridRegions = this.gridSampleInequality(ast, expression);
+      const gridRegions = this.gridSampleInequality(ast, expression, expressionConfig);
       regions.push(...gridRegions);
     }
 
     return regions;
   }
 
-  private plotPoint(ast: ASTNode, expression: string): PlotRegion[] {
+  private plotPoint(ast: ASTNode, expression: string, expressionConfig?: PlotExpression): PlotRegion[] {
     const regions: PlotRegion[] = [];
 
     // For simple points, just evaluate at z = point
@@ -820,7 +827,9 @@ export class HybridPlotter {
           points: [{ x: complexValue.real, y: complexValue.imaginary }],
           boundary: [],
           type: 'boundary',
-          expression
+          expression,
+          color: expressionConfig?.color,
+          lineThickness: expressionConfig?.lineThickness,
         });
       }
     }
@@ -828,14 +837,14 @@ export class HybridPlotter {
     return regions;
   }
 
-  private plotComplexExpression(ast: ASTNode, expression: string): PlotRegion[] {
+  private plotComplexExpression(ast: ASTNode, expression: string, expressionConfig?: PlotExpression): PlotRegion[] {
     // For complex expressions, we'll use grid sampling to visualize the result
-    return this.gridSampleInequality(ast, expression);
+    return this.gridSampleInequality(ast, expression, expressionConfig);
   }
 
-  private plotGeneric(ast: ASTNode, expression: string): PlotRegion[] {
+  private plotGeneric(ast: ASTNode, expression: string, expressionConfig?: PlotExpression): PlotRegion[] {
     // Generic fallback - use grid sampling
-    return this.gridSampleInequality(ast, expression);
+    return this.gridSampleInequality(ast, expression, expressionConfig);
   }
 
   private traceBoundary(ast: ASTNode, expression?: string): Point[][] {
@@ -1330,7 +1339,7 @@ export class HybridPlotter {
     return points;
   }
 
-  private gridSampleInequality(ast: ASTNode, expression: string): PlotRegion[] {
+  private gridSampleInequality(ast: ASTNode, expression: string, expressionConfig?: PlotExpression): PlotRegion[] {
     const regions: PlotRegion[] = [];
     const resolution = this.config.resolution;
 
@@ -1365,14 +1374,16 @@ export class HybridPlotter {
         points,
         boundary: [], // Can be computed separately if needed
         type: 'filled',
-        expression
+        expression,
+        color: expressionConfig?.color,
+        lineThickness: expressionConfig?.lineThickness,
       });
     }
 
     return regions;
   }
 
-  private adaptiveSampleInequality(ast: ASTNode, expression: string): PlotRegion[] {
+  private adaptiveSampleInequality(ast: ASTNode, expression: string, expressionConfig?: PlotExpression): PlotRegion[] {
     // Start with coarse grid, refine where needed
     const regions: PlotRegion[] = [];
     const points: Point[] = [];
@@ -1427,7 +1438,9 @@ export class HybridPlotter {
         points,
         boundary: [],
         type: 'filled',
-        expression
+        expression,
+        color: expressionConfig?.color,
+        lineThickness: expressionConfig?.lineThickness,
       });
     }
 

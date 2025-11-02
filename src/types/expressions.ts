@@ -8,6 +8,7 @@ export interface PointExpression {
   color?: string;
   label?: string;
   visible?: boolean;  // Toggle visibility in the plot
+  lineThickness?: number; // Line thickness for plotting
 }
 
 export interface EqualityExpression {
@@ -17,6 +18,7 @@ export interface EqualityExpression {
   color?: string;
   label?: string;
   visible?: boolean;  // Toggle visibility in the plot
+  lineThickness?: number; // Line thickness for plotting
 }
 
 export interface InequalityExpression {
@@ -26,6 +28,7 @@ export interface InequalityExpression {
   color?: string;
   label?: string;
   visible?: boolean;  // Toggle visibility in the plot
+  lineThickness?: number; // Line thickness for plotting
 }
 
 export interface NamedVariable {

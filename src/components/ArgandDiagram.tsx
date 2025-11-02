@@ -15,6 +15,7 @@ interface ArgandDiagramProps {
   height?: number;
   range?: number;
   config?: PlotConfig;
+  viewport?: ViewportState;
   onViewportChange?: (viewport: ViewportState) => void;
   tickCrowding?: number;
   onTickCrowdingChange?: (tickCrowding: number) => void;
@@ -27,41 +28,42 @@ const ArgandDiagram: React.FC<ArgandDiagramProps> = ({
   height = 700,
   range = 15,
   config,
+  viewport,
   onViewportChange,
   tickCrowding,
   onTickCrowdingChange
 }) => {
   const [hoveredPoint, setHoveredPoint] = useState<Point | null>(null);
-  const [viewport, setViewport] = useState<ViewportState>({
+
+  // Default viewport if not provided
+  const currentViewport = viewport || {
     offsetX: 0,
     offsetY: 0,
     zoomLevel: 1
-  });
+  };
 
   // Wrapper to call onViewportChange when viewport changes
-  const updateViewport = useCallback((newViewport: ViewportState | ((prev: ViewportState) => ViewportState)) => {
-    const updatedViewport = typeof newViewport === 'function' ? newViewport(viewport) : newViewport;
-    setViewport(updatedViewport);
+  const updateViewport = useCallback((newViewport: ViewportState) => {
     if (onViewportChange) {
-      onViewportChange(updatedViewport);
+      onViewportChange(newViewport);
     }
-  }, [onViewportChange, viewport]);
+  }, [onViewportChange]);
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const svgRef = useRef<SVGSVGElement>(null);
 
-  const baseScale = width / (2 * range);
-  const scale = baseScale * viewport.zoomLevel;
+  const baseScale = (width * 3) / (2 * range);
+  const scale = baseScale * currentViewport.zoomLevel;
   const center = { x: width / 2, y: height / 2 };
 
   const toScreenCoords = (x: number, y: number) => ({
-    x: center.x + (x - viewport.offsetX) * scale,
-    y: center.y - (y - viewport.offsetY) * scale // Flip y-axis for screen coordinates
+    x: center.x + (x - currentViewport.offsetX) * scale,
+    y: center.y - (y - currentViewport.offsetY) * scale // Flip y-axis for screen coordinates
   });
 
   const toMathCoords = (screenX: number, screenY: number) => ({
-    x: (screenX - center.x) / scale + viewport.offsetX,
-    y: -(screenY - center.y) / scale + viewport.offsetY // Flip y-axis for math coordinates
+    x: (screenX - center.x) / scale + currentViewport.offsetX,
+    y: -(screenY - center.y) / scale + currentViewport.offsetY // Flip y-axis for math coordinates
   });
 
   // Mouse event handlers for panning
@@ -83,11 +85,12 @@ const ArgandDiagram: React.FC<ArgandDiagramProps> = ({
     const mathDeltaX = -deltaX / scale;
     const mathDeltaY = deltaY / scale; // Inverted because y-axis is flipped
 
-    updateViewport(prev => ({
-      ...prev,
-      offsetX: prev.offsetX + mathDeltaX,
-      offsetY: prev.offsetY + mathDeltaY
-    }));
+    const newViewport = {
+      ...currentViewport,
+      offsetX: currentViewport.offsetX + mathDeltaX,
+      offsetY: currentViewport.offsetY + mathDeltaY
+    };
+    updateViewport(newViewport);
 
     setDragStart({ x: e.clientX, y: e.clientY });
   }, [isDragging, dragStart, scale]);
@@ -102,12 +105,10 @@ const ArgandDiagram: React.FC<ArgandDiagramProps> = ({
 
   // Wheel event handler for zooming
   const handleWheel = useCallback((e: React.WheelEvent<SVGSVGElement>) => {
-    e.preventDefault();
-
     const scaleFactor = e.deltaY > 0 ? 0.9 : 1.1;
-    const newZoomLevel = Math.max(0.1, Math.min(50, viewport.zoomLevel * scaleFactor));
+    const newZoomLevel = Math.max(0.1, Math.min(50, currentViewport.zoomLevel * scaleFactor));
 
-    if (newZoomLevel === viewport.zoomLevel) return;
+    if (newZoomLevel === currentViewport.zoomLevel) return;
 
     // Get mouse position in math coordinates before zoom
     const mouseScreenCoords = { x: e.clientX, y: e.clientY };
@@ -119,20 +120,18 @@ const ArgandDiagram: React.FC<ArgandDiagramProps> = ({
     const mathCoords = toMathCoords(mouseX, mouseY);
 
     // Update zoom
-    updateViewport(prev => {
-      const newViewport = { ...prev, zoomLevel: newZoomLevel };
+    const newViewport = { ...currentViewport, zoomLevel: newZoomLevel };
 
-      // Calculate new scale
-      const newScale = baseScale * newZoomLevel;
+    // Calculate new scale
+    const newScale = baseScale * newZoomLevel;
 
-      // Adjust offset to zoom toward mouse position
-      const zoomFactor = newZoomLevel / prev.zoomLevel;
-      newViewport.offsetX = mathCoords.x - (mathCoords.x - prev.offsetX) * zoomFactor;
-      newViewport.offsetY = mathCoords.y - (mathCoords.y - prev.offsetY) * zoomFactor;
+    // Adjust offset to zoom toward mouse position
+    const zoomFactor = newZoomLevel / currentViewport.zoomLevel;
+    newViewport.offsetX = mathCoords.x - (mathCoords.x - currentViewport.offsetX) * zoomFactor;
+    newViewport.offsetY = mathCoords.y - (mathCoords.y - currentViewport.offsetY) * zoomFactor;
 
-      return newViewport;
-    });
-  }, [viewport.zoomLevel, baseScale, toMathCoords]);
+    updateViewport(newViewport);
+  }, [currentViewport.zoomLevel, baseScale, toMathCoords]);
 
   // Keyboard shortcuts (only when SVG is focused or with Ctrl/Cmd)
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
@@ -144,8 +143,8 @@ const ArgandDiagram: React.FC<ArgandDiagramProps> = ({
       return;
     }
 
-    const step = 0.5 / viewport.zoomLevel; // Pan step size
-    let newViewport = { ...viewport };
+    const step = 0.5 / currentViewport.zoomLevel; // Pan step size
+    let newViewport = { ...currentViewport };
 
     switch (e.key) {
       case 'ArrowUp':
@@ -163,7 +162,7 @@ const ArgandDiagram: React.FC<ArgandDiagramProps> = ({
       case '+':
       case '=':
         if (e.ctrlKey || e.metaKey) {
-          newViewport.zoomLevel = Math.min(50, newViewport.zoomLevel * 1.2);
+          newViewport.zoomLevel = Math.min(50, newViewport.zoomLevel * 1.25);
         }
         break;
       case '-':
@@ -196,16 +195,25 @@ const ArgandDiagram: React.FC<ArgandDiagramProps> = ({
 
   // Helper functions for external control
   const resetView = useCallback(() => {
-    updateViewport({ offsetX: 0, offsetY: 0, zoomLevel: 1 });
+    updateViewport({ offsetX: 0, offsetY: 0, zoomLevel: 3 });
   }, []);
+
+  const centerView = useCallback(() => {
+    // Get current viewport state to preserve zoom level
+    const currentZoom = currentViewport.zoomLevel;
+    const newViewport = { offsetX: 0, offsetY: 0, zoomLevel: currentZoom };
+    updateViewport(newViewport);
+  }, [currentViewport.zoomLevel, updateViewport]);
 
   const zoomIn = useCallback(() => {
-    updateViewport(prev => ({ ...prev, zoomLevel: Math.min(50, prev.zoomLevel * 1.2) }));
-  }, []);
+    const newViewport = { ...currentViewport, zoomLevel: Math.min(50, currentViewport.zoomLevel * 1.25) };
+    updateViewport(newViewport);
+  }, [currentViewport, updateViewport]);
 
   const zoomOut = useCallback(() => {
-    updateViewport(prev => ({ ...prev, zoomLevel: Math.max(0.1, prev.zoomLevel * 0.8) }));
-  }, []);
+    const newViewport = { ...currentViewport, zoomLevel: Math.max(0.1, currentViewport.zoomLevel * 0.8) };
+    updateViewport(newViewport);
+  }, [currentViewport, updateViewport]);
 
 
   const gridLines = useMemo(() => {
@@ -254,8 +262,8 @@ const ArgandDiagram: React.FC<ArgandDiagramProps> = ({
     };
 
     const stepSize = tickCrowding !== undefined
-      ? calculateOptimalStepSize(tickCrowding, viewport.zoomLevel)
-      : calculateOptimalStepSize(2, viewport.zoomLevel); // Default medium crowding
+      ? calculateOptimalStepSize(tickCrowding, currentViewport.zoomLevel)
+      : calculateOptimalStepSize(2, currentViewport.zoomLevel); // Default medium crowding
 
     // Calculate grid bounds with some padding
     const padding = stepSize * 2;
@@ -364,8 +372,8 @@ const ArgandDiagram: React.FC<ArgandDiagramProps> = ({
     };
 
     const stepSize = tickCrowding !== undefined
-      ? calculateOptimalStepSize(tickCrowding, viewport.zoomLevel)
-      : calculateOptimalStepSize(2, viewport.zoomLevel);
+      ? calculateOptimalStepSize(tickCrowding, currentViewport.zoomLevel)
+      : calculateOptimalStepSize(2, currentViewport.zoomLevel);
 
     // Calculate grid bounds with some padding
     const padding = stepSize * 2;
@@ -405,7 +413,7 @@ const ArgandDiagram: React.FC<ArgandDiagramProps> = ({
                   x2={tickScreenX}
                   y2={xAxisY + tickSize / 2}
                   className="diagram-axis"
-                  strokeWidth="2"
+                  strokeWidth="1"
                 />
               );
             }
@@ -477,7 +485,7 @@ const ArgandDiagram: React.FC<ArgandDiagramProps> = ({
                   x2={yAxisX + tickSize / 2}
                   y2={tickScreenY}
                   className="diagram-axis"
-                  strokeWidth="2"
+                  strokeWidth="1"
                 />
               );
             }
@@ -531,7 +539,7 @@ const ArgandDiagram: React.FC<ArgandDiagramProps> = ({
           r="5"
           fill={point.color || '#ff6b6b'}
           stroke="#fff"
-          strokeWidth="2"
+          strokeWidth="1"
           onMouseEnter={() => setHoveredPoint(point)}
           onMouseLeave={() => setHoveredPoint(null)}
           style={{ cursor: 'pointer' }}
@@ -551,6 +559,7 @@ const ArgandDiagram: React.FC<ArgandDiagramProps> = ({
   };
 
   const renderCurve = (curve: Curve, index: number) => {
+    const { color = '#4ecdc4', lineThickness = 2 } = curve;
     const pathData = curve.points
       .map((point, pointIndex) => {
         const screen = toScreenCoords(point.x, point.y);
@@ -563,8 +572,8 @@ const ArgandDiagram: React.FC<ArgandDiagramProps> = ({
         <path
           d={pathData}
           fill="none"
-          stroke={curve.color || '#4ecdc4'}
-          strokeWidth="2"
+          stroke={color}
+          strokeWidth={lineThickness.toString()}
         />
         {curve.label && curve.points.length > 0 && (
           <text
@@ -581,7 +590,7 @@ const ArgandDiagram: React.FC<ArgandDiagramProps> = ({
   };
 
   const renderInequality = (inequality: Inequality, index: number) => {
-    const { type, center, radius, boundary = 'solid', color = '#95e77e' } = inequality;
+    const { type, center, radius, boundary = 'solid', color = '#95e77e', lineThickness = 2 } = inequality;
 
     if (!center || radius === undefined) return null;
 
@@ -598,7 +607,7 @@ const ArgandDiagram: React.FC<ArgandDiagramProps> = ({
             fill={color}
             fillOpacity={0.3}
             stroke={color}
-            strokeWidth="2"
+            strokeWidth={lineThickness.toString()}
             strokeDasharray={boundary === 'dashed' ? '5,5' : '0'}
           />
           {inequality.label && (
@@ -619,23 +628,25 @@ const ArgandDiagram: React.FC<ArgandDiagramProps> = ({
   };
 
   const renderPlotRegion = (region: PlotRegion, index: number) => {
-    const { points, boundary, type, color = '#4ecdc4' } = region;
+    const { points, boundary, type, color = '#4ecdc4', lineThickness = 2 } = region;
 
     const elements = [];
 
-    // Render filled region using individual points for better control
+    // Render filled region as solid rectangles
     if ((type === 'filled' || type === 'both') && points.length > 0) {
-      // Create small circles or squares for each point to avoid polygon artifacts
+      // Create filled rectangles for each point to form a solid region
       points.forEach((point, pointIndex) => {
         const screen = toScreenCoords(point.x, point.y);
+        const pointSize = 4; // Size of each point rectangle for solid appearance
         elements.push(
-          <circle
+          <rect
             key={`region-point-${index}-${pointIndex}`}
-            cx={screen.x}
-            cy={screen.y}
-            r="1.5"
+            x={screen.x - pointSize/2}
+            y={screen.y - pointSize/2}
+            width={pointSize}
+            height={pointSize}
             fill={color}
-            fillOpacity={0.4}
+            fillOpacity={0.6}
           />
         );
       });
@@ -661,7 +672,7 @@ const ArgandDiagram: React.FC<ArgandDiagramProps> = ({
                 d={pathData}
                 fill="none"
                 stroke={color}
-                strokeWidth="2"
+                strokeWidth={lineThickness.toString()}
               />
             );
           }
@@ -681,7 +692,7 @@ const ArgandDiagram: React.FC<ArgandDiagramProps> = ({
             d={pathData}
             fill="none"
             stroke={color}
-            strokeWidth="2"
+            strokeWidth={lineThickness.toString()}
           />
         );
       }
@@ -750,74 +761,78 @@ const ArgandDiagram: React.FC<ArgandDiagramProps> = ({
   const tickSize = config?.tickSize || 6;
 
   return (
-    <div className="argand-diagram relative">
-      {/* Controls overlay */}
-      <div className="absolute top-2 right-2 diagram-control-panel rounded shadow-md p-2 z-10">
-        <div className="text-xs font-mono diagram-control-text mb-2">
-          Zoom: {(viewport.zoomLevel * 100).toFixed(0)}%
-        </div>
-        <div className="flex gap-1">
-          <button
-            onClick={zoomIn}
-            className="px-2 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600"
-            title="Zoom In (+)"
-          >
-            +
-          </button>
-          <button
-            onClick={zoomOut}
-            className="px-2 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600"
-            title="Zoom Out (-)"
-          >
-            −
-          </button>
-          <button
-            onClick={resetView}
-            className="px-2 py-1 text-xs bg-gray-500 text-white rounded hover:bg-gray-600"
-            title="Reset View (R)"
-          >
-            ↺
-          </button>
-        </div>
-        {onTickCrowdingChange && (
-          <div className="mt-3 pt-2 border-t diagram-control-border">
-            <div className="text-xs font-mono diagram-control-text mb-1">
-              Tick Density: {['Very Sparse', 'Sparse', 'Medium', 'Dense', 'Very Dense'][tickCrowding - 1]}
-            </div>
-            <div className="flex gap-1">
-              <button
-                onClick={() => onTickCrowdingChange(Math.max(1, tickCrowding - 1))}
-                className="px-2 py-1 text-xs bg-green-500 text-white rounded hover:bg-green-600 disabled:bg-gray-300 disabled:cursor-not-allowed"
-                title="Less crowded"
-                disabled={tickCrowding <= 1}
-              >
-                −
-              </button>
-              <button
-                onClick={() => onTickCrowdingChange(Math.min(5, tickCrowding + 1))}
-                className="px-2 py-1 text-xs bg-green-500 text-white rounded hover:bg-green-600 disabled:bg-gray-300 disabled:cursor-not-allowed"
-                title="More crowded"
-                disabled={tickCrowding >= 5}
-              >
-                +
-              </button>
-            </div>
+    <div className="argand-diagram">
+      {/* Controls bar above graph */}
+      <div className="px-3 py-1 border-b border-slate-600 flex items-center justify-between text-sm w-full bg-slate-800/90 text-slate-200 dark:border-slate-300 dark:bg-white/90 dark:text-slate-700 flex-nowrap">
+          {/* Zoom controls - left side */}
+          <div className="flex items-center gap-4">
+            <span className="font-medium w-12 text-right inline-block text-slate-200 dark:text-slate-100">{Math.round(currentViewport.zoomLevel * 100)}%</span>
           </div>
-        )}
-        <div className="text-xs diagram-control-text mt-2">
-          <div>Drag to pan</div>
-          <div>Scroll to zoom</div>
-          <div>Click diagram + arrows to pan</div>
-          <div>Ctrl+/- to zoom</div>
-          <div>Ctrl+R to reset</div>
+
+          {/* All controls - right side */}
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <button
+              onClick={zoomIn}
+              className="w-5 h-5 flex items-center justify-center rounded bg-blue-500 text-white hover:bg-blue-600 transition-colors text-xs"
+              title="Zoom In"
+            >
+              +
+            </button>
+            <button
+              onClick={zoomOut}
+              className="w-5 h-5 flex items-center justify-center rounded bg-blue-500 text-white hover:bg-blue-600 transition-colors text-xs"
+              title="Zoom Out"
+            >
+              −
+            </button>
+            <button
+              onClick={centerView}
+              className="w-5 h-5 flex items-center justify-center rounded bg-gray-500 text-white hover:bg-gray-600 transition-colors text-xs"
+              title="Center on Origin"
+            >
+              ⌖
+            </button>
+            <button
+              onClick={resetView}
+              className="w-5 h-5 flex items-center justify-center rounded bg-orange-500 text-white hover:bg-orange-600 transition-colors text-xs"
+              title="Reset View"
+            >
+              ↺
+            </button>
+
+            {/* Tick density controls */}
+            {onTickCrowdingChange && (
+              <>
+                <span className="text-xs text-slate-200 dark:text-slate-700">
+                  {['VS', 'S', 'M', 'D', 'VD'][tickCrowding - 1]}
+                </span>
+                <button
+                  onClick={() => onTickCrowdingChange(Math.max(1, tickCrowding - 1))}
+                  className="w-4 h-4 flex items-center justify-center rounded bg-green-500 text-white hover:bg-green-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors text-xs"
+                  title="Less"
+                  disabled={tickCrowding <= 1}
+                >
+                  −
+                </button>
+                <button
+                  onClick={() => onTickCrowdingChange(Math.min(5, tickCrowding + 1))}
+                  className="w-4 h-4 flex items-center justify-center rounded bg-green-500 text-white hover:bg-green-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors text-xs"
+                  title="More"
+                  disabled={tickCrowding >= 5}
+                >
+                  +
+                </button>
+              </>
+            )}
+          </div>
+
         </div>
-      </div>
 
       <svg
         ref={svgRef}
         width={width}
         height={height}
-        className="border diagram-svg-border focus:outline-none focus:ring-2 focus:ring-blue-400"
+        className="border-l border-r border-b diagram-svg-border focus:outline-none focus:ring-2 focus:ring-blue-400"
         style={{ cursor: isDragging ? 'grabbing' : 'grab' }}
         tabIndex={0}
         onMouseDown={handleMouseDown}

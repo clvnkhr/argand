@@ -9,6 +9,7 @@ export interface Point {
   color?: string;
   label?: string;
   name?: string; // For named points like A, B, etc.
+  lineThickness?: number; // Line thickness for rendering
 }
 
 export interface Curve {
@@ -17,6 +18,7 @@ export interface Curve {
   label?: string;
   name?: string;
   type?: 'line' | 'curve' | 'path';
+  lineThickness?: number; // Line thickness for rendering
 }
 
 export interface Inequality {
@@ -27,6 +29,7 @@ export interface Inequality {
   color?: string;
   label?: string;
   name?: string;
+  lineThickness?: number; // Line thickness for boundary rendering
   // For half-planes
   lineStart?: ComplexNumber;
   lineEnd?: ComplexNumber;
@@ -47,6 +50,7 @@ export interface ExpressionElement {
   color?: string;
   label?: string;
   name?: string;
+  lineThickness?: number; // Line thickness for rendering
   evaluationData?: Float32Array;
   points?: Point[];
   boundary?: Point[];

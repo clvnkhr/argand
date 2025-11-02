@@ -51,12 +51,13 @@ function App() {
         const result = parser.parseExpressionString(expression.expression);
 
         if (!result.error) {
-          const plotResult = plotter.plotExpression(result.ast, expression.expression);
+          const plotResult = plotter.plotExpression(result.ast, expression.expression, expression);
           if (plotResult.regions && plotResult.regions.length > 0) {
             // Add expression metadata to regions
             const regionsWithMeta = plotResult.regions.map(region => ({
               ...region,
               color: expression.color || region.color,
+              lineThickness: expression.lineThickness || region.lineThickness,
               expression: expression.label || expression.expression
             }));
             allRegions.push(...regionsWithMeta);
@@ -81,8 +82,7 @@ function App() {
   return (
     <div className="App">
       <header className="App-header">
-        <h1>Advanced Argand Diagram Plotter</h1>
-        <p>Plot complex mathematical expressions with LaTeX rendering and hybrid plotting</p>
+        <h1>Argand Diagram Plotter</h1>
       </header>
 
       <main className="container">
@@ -94,6 +94,7 @@ function App() {
             height={config.height}
             range={config.range}
             config={config}
+            viewport={viewport}
             onViewportChange={handleViewportChange}
             tickCrowding={tickCrowding}
             onTickCrowdingChange={setTickCrowding}
@@ -108,10 +109,6 @@ function App() {
           />
         </div>
       </main>
-
-      <footer className="App-footer">
-        <p>Advanced complex number visualization with mathematical expression support</p>
-      </footer>
     </div>
   );
 }
