@@ -304,13 +304,22 @@ export const ExpressionPanel: React.FC<ExpressionPanelProps> = ({
       {/* Fixed header */}
       <div className="px-4 py-3 border-b flex items-center justify-between w-full">
         <h3 className="text-sm font-semibold expression-label flex-shrink-0">Expressions</h3>
-        <button
+        <div style={{ display: 'flex', gap: '4px' }}>
+          <button
             onClick={addNewExpression}
             className="w-6 h-6 flex items-center justify-center rounded border-2 border-dashed hover:border-solid transition-all duration-200 expression-item text-sm expression-label flex-shrink-0"
             title="Add Expression"
           >
             +
           </button>
+          <button
+            onClick={onToggleCollapse}
+            className="w-6 h-6 flex items-center justify-center rounded border hover:border-solid transition-all duration-200 expression-item text-sm expression-label flex-shrink-0"
+            title="Collapse"
+          >
+            ←
+          </button>
+        </div>
       </div>
 
           {/* Scrollable content */}
