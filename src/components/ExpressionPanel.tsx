@@ -11,12 +11,16 @@ interface ExpressionPanelProps {
   onExpressionsChange: (expressions: PlotExpression[]) => void;
   config: PlotConfig;
   onPlotGenerated: (plotData: any) => void;
+  isCollapsed?: boolean;
+  onToggleCollapse?: () => void;
 }
 
 export const ExpressionPanel: React.FC<ExpressionPanelProps> = ({
   onExpressionsChange,
   config,
-  onPlotGenerated
+  onPlotGenerated,
+  isCollapsed = false,
+  onToggleCollapse
 }) => {
   const [expressions, setExpressions] = useState<PlotExpression[]>([]);
   const [namedVariables, setNamedVariables] = useState<NamedVariable[]>([]);
@@ -31,6 +35,17 @@ export const ExpressionPanel: React.FC<ExpressionPanelProps> = ({
   const [showStylePanel, setShowStylePanel] = useState<number | null>(null);
   const [tempColor, setTempColor] = useState('#4ecdc4');
   const [tempLineThickness, setTempLineThickness] = useState(2);
+
+  // Function to generate random colors
+  const generateRandomColor = useCallback(() => {
+    const colors = [
+      '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7',
+      '#DDA0DD', '#98D8C8', '#F7DC6F', '#BB8FCE', '#85C1E2',
+      '#F8B739', '#52B788', '#E74C3C', '#3498DB', '#2ECC71',
+      '#F39C12', '#9B59B6', '#1ABC9C', '#E67E22', '#34495E'
+    ];
+    return colors[Math.floor(Math.random() * colors.length)];
+  }, []);
 
   const parser = new ExpressionParser();
   const evaluator = new ExpressionEvaluator();
@@ -187,7 +202,7 @@ export const ExpressionPanel: React.FC<ExpressionPanelProps> = ({
       type: 'point',
       expression: '',
       originalExpression: '',
-      color: '#4ecdc4',
+      color: generateRandomColor(),
       visible: true
     };
 
@@ -200,14 +215,14 @@ export const ExpressionPanel: React.FC<ExpressionPanelProps> = ({
         setEditingIndex(updatedExpressions.length - 1);
         setEditingExpression('');
         setEditingLabel('');
-        setEditingColor('#4ecdc4');
+        setEditingColor(newExpr.color);
         setEditingLineThickness(2);
         setParseError(null);
       }, 0);
 
       return updatedExpressions;
     });
-  }, [onExpressionsChange]);
+  }, [onExpressionsChange, generateRandomColor]);
 
   const removeExpression = useCallback((index: number) => {
     const updatedExpressions = expressions.filter((_, i) => i !== index);
@@ -318,14 +333,23 @@ export const ExpressionPanel: React.FC<ExpressionPanelProps> = ({
                   <div className="flex gap-1 items-center">
                     <div className="relative">
                       <div
-                        className="w-8 h-4 border rounded cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-all duration-200 bg-white dark:bg-gray-800 flex items-center justify-center"
+                        className="w-8 h-4 border-2 rounded cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-all duration-200 bg-white dark:bg-gray-800 flex items-center justify-center"
+                        style={{ borderColor: editingColor }}
                         onClick={(e) => {
                           e.stopPropagation();
                           openStylePanel(index);
                         }}
-                        title="Style Settings"
+                        title="Click to change color & style"
                       >
-                        <div className="w-6 h-0.5 bg-current" style={{color: editingColor, height: `${editingLineThickness}px`}}></div>
+                        <div
+                          className="rounded-full"
+                          style={{
+                            width: '24px',
+                            backgroundColor: editingColor,
+                            height: `${Math.max(editingLineThickness || 2, 4)}px`,
+                            minWidth: '24px'
+                          }}
+                        ></div>
                       </div>
 
                       {showStylePanel === index && (
@@ -459,14 +483,23 @@ export const ExpressionPanel: React.FC<ExpressionPanelProps> = ({
                 >
                   <div className="relative">
                     <div
-                        className="w-8 h-4 border rounded cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-all duration-200 bg-white dark:bg-gray-800 flex items-center justify-center flex-shrink-0"
+                        className="w-8 h-4 border-2 rounded cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-all duration-200 bg-white dark:bg-gray-800 flex items-center justify-center flex-shrink-0"
+                        style={{ borderColor: expr.color || '#4ecdc4' }}
                         onClick={(e) => {
                           e.stopPropagation();
                           openStylePanel(index);
                         }}
-                        title="Style Settings"
+                        title="Click to change color & style"
                       >
-                        <div className="w-6 h-0.5 bg-current" style={{color: expr.color || '#4ecdc4', height: `${expr.lineThickness || 2}px`}}></div>
+                        <div
+                          className="rounded-full"
+                          style={{
+                            width: '24px',
+                            backgroundColor: expr.color || '#4ecdc4',
+                            height: `${Math.max(expr.lineThickness || 2, 4)}px`,
+                            minWidth: '24px'
+                          }}
+                        ></div>
                       </div>
 
                       {showStylePanel === index && (

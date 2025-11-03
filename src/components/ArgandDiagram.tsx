@@ -19,6 +19,8 @@ interface ArgandDiagramProps {
   onViewportChange?: (viewport: ViewportState) => void;
   tickCrowding?: number;
   onTickCrowdingChange?: (tickCrowding: number) => void;
+  isControlsCollapsed?: boolean;
+  onToggleControls?: () => void;
 }
 
 const ArgandDiagram: React.FC<ArgandDiagramProps> = ({
@@ -31,7 +33,9 @@ const ArgandDiagram: React.FC<ArgandDiagramProps> = ({
   viewport,
   onViewportChange,
   tickCrowding,
-  onTickCrowdingChange
+  onTickCrowdingChange,
+  isControlsCollapsed = false,
+  onToggleControls
 }) => {
   const [hoveredPoint, setHoveredPoint] = useState<Point | null>(null);
 
@@ -39,7 +43,7 @@ const ArgandDiagram: React.FC<ArgandDiagramProps> = ({
   const currentViewport = viewport || {
     offsetX: 0,
     offsetY: 0,
-    zoomLevel: 1
+    zoomLevel: 0.66
   };
 
   // Wrapper to call onViewportChange when viewport changes
@@ -105,6 +109,8 @@ const ArgandDiagram: React.FC<ArgandDiagramProps> = ({
 
   // Wheel event handler for zooming
   const handleWheel = useCallback((e: React.WheelEvent<SVGSVGElement>) => {
+    e.preventDefault();
+
     const scaleFactor = e.deltaY > 0 ? 0.9 : 1.1;
     const newZoomLevel = Math.max(0.1, Math.min(50, currentViewport.zoomLevel * scaleFactor));
 
@@ -145,44 +151,60 @@ const ArgandDiagram: React.FC<ArgandDiagramProps> = ({
 
     const step = 0.5 / currentViewport.zoomLevel; // Pan step size
     let newViewport = { ...currentViewport };
+    let shouldPreventDefault = false;
 
     switch (e.key) {
       case 'ArrowUp':
-        newViewport.offsetY += step;
+        if (document.activeElement === svgRef.current) {
+          newViewport.offsetY += step;
+          shouldPreventDefault = true;
+        }
         break;
       case 'ArrowDown':
-        newViewport.offsetY -= step;
+        if (document.activeElement === svgRef.current) {
+          newViewport.offsetY -= step;
+          shouldPreventDefault = true;
+        }
         break;
       case 'ArrowLeft':
-        newViewport.offsetX -= step;
+        if (document.activeElement === svgRef.current) {
+          newViewport.offsetX -= step;
+          shouldPreventDefault = true;
+        }
         break;
       case 'ArrowRight':
-        newViewport.offsetX += step;
+        if (document.activeElement === svgRef.current) {
+          newViewport.offsetX += step;
+          shouldPreventDefault = true;
+        }
         break;
       case '+':
       case '=':
         if (e.ctrlKey || e.metaKey) {
           newViewport.zoomLevel = Math.min(50, newViewport.zoomLevel * 1.25);
+          shouldPreventDefault = true;
         }
         break;
       case '-':
         if (e.ctrlKey || e.metaKey) {
           newViewport.zoomLevel = Math.max(0.1, newViewport.zoomLevel * 0.8);
+          shouldPreventDefault = true;
         }
         break;
       case 'r':
       case 'R':
         if (e.ctrlKey || e.metaKey || document.activeElement === svgRef.current) {
           // Reset view
-          newViewport = { offsetX: 0, offsetY: 0, zoomLevel: 1 };
+          newViewport = { offsetX: 0, offsetY: 0, zoomLevel: 0.66 };
+          shouldPreventDefault = true;
         }
         break;
       default:
         return;
     }
 
-    updateViewport(newViewport);
-    if (e.key !== 'r' && e.key !== 'R') {
+    if (shouldPreventDefault) {
+      updateViewport(newViewport);
       e.preventDefault();
     }
   }, [viewport]);
@@ -763,70 +785,44 @@ const ArgandDiagram: React.FC<ArgandDiagramProps> = ({
   return (
     <div className="argand-diagram">
       {/* Controls bar above graph */}
-      <div className="px-3 py-1 border-b border-slate-600 flex items-center justify-between text-sm w-full bg-slate-800/90 text-slate-200 dark:border-slate-300 dark:bg-white/90 dark:text-slate-700 flex-nowrap">
-          {/* Zoom controls - left side */}
-          <div className="flex items-center gap-4">
-            <span className="font-medium w-12 text-right inline-block text-slate-200 dark:text-slate-100">{Math.round(currentViewport.zoomLevel * 100)}%</span>
-          </div>
-
-          {/* All controls - right side */}
-          <div className="flex items-center gap-2 flex-shrink-0">
-            <button
-              onClick={zoomIn}
-              className="w-5 h-5 flex items-center justify-center rounded bg-blue-500 text-white hover:bg-blue-600 transition-colors text-xs"
-              title="Zoom In"
-            >
-              +
-            </button>
-            <button
-              onClick={zoomOut}
-              className="w-5 h-5 flex items-center justify-center rounded bg-blue-500 text-white hover:bg-blue-600 transition-colors text-xs"
-              title="Zoom Out"
-            >
-              −
-            </button>
-            <button
-              onClick={centerView}
-              className="w-5 h-5 flex items-center justify-center rounded bg-gray-500 text-white hover:bg-gray-600 transition-colors text-xs"
-              title="Center on Origin"
-            >
-              ⌖
-            </button>
-            <button
-              onClick={resetView}
-              className="w-5 h-5 flex items-center justify-center rounded bg-orange-500 text-white hover:bg-orange-600 transition-colors text-xs"
-              title="Reset View"
-            >
-              ↺
-            </button>
-
-            {/* Tick density controls */}
-            {onTickCrowdingChange && (
-              <>
-                <span className="text-xs text-slate-200 dark:text-slate-700">
-                  {['VS', 'S', 'M', 'D', 'VD'][tickCrowding - 1]}
-                </span>
-                <button
-                  onClick={() => onTickCrowdingChange(Math.max(1, tickCrowding - 1))}
-                  className="w-4 h-4 flex items-center justify-center rounded bg-green-500 text-white hover:bg-green-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors text-xs"
-                  title="Less"
-                  disabled={tickCrowding <= 1}
-                >
-                  −
-                </button>
-                <button
-                  onClick={() => onTickCrowdingChange(Math.min(5, tickCrowding + 1))}
-                  className="w-4 h-4 flex items-center justify-center rounded bg-green-500 text-white hover:bg-green-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors text-xs"
-                  title="More"
-                  disabled={tickCrowding >= 5}
-                >
-                  +
-                </button>
-              </>
-            )}
-          </div>
-
+      <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', borderBottom: '1px solid #ccc'}}>
+        {isControlsCollapsed && onToggleControls && (
+          <button
+            onClick={onToggleControls}
+            title="Expand Expressions Panel"
+            style={{padding: '2px 8px', margin: '0', fontSize: '12px'}}
+          >
+            →
+          </button>
+        )}
+        <div style={{display: 'flex', alignItems: 'center', gap: '4px', marginLeft: isControlsCollapsed ? '0' : 'auto'}}>
+          <button onClick={zoomIn} title="Zoom In" style={{padding: '2px 4px', margin: '0 2px'}}>+</button>
+          <button onClick={zoomOut} title="Zoom Out" style={{padding: '2px 4px', margin: '0 2px'}}>−</button>
+          <button onClick={centerView} title="Center on Origin" style={{padding: '2px 4px', margin: '0 2px'}}>⌖</button>
+          <button onClick={resetView} title="Reset View" style={{padding: '2px 4px', margin: '0 2px'}}>↺</button>
+          {onTickCrowdingChange && (
+            <>
+              <span style={{display: 'inline-block', width: '20px'}}></span>
+              <button
+                onClick={() => onTickCrowdingChange(Math.max(1, tickCrowding - 1))}
+                title="Less"
+                disabled={tickCrowding <= 1}
+                style={{padding: '2px 4px', margin: '0 2px'}}
+              >
+                −
+              </button>
+              <button
+                onClick={() => onTickCrowdingChange(Math.min(5, tickCrowding + 1))}
+                title="More"
+                disabled={tickCrowding >= 5}
+                style={{padding: '2px 4px', margin: '0 2px'}}
+              >
+                +
+              </button>
+            </>
+          )}
         </div>
+      </div>
 
       <svg
         ref={svgRef}

@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import ArgandDiagram from './components/ArgandDiagram';
 import ExpressionPanel from './components/ExpressionPanel';
 import { PlotConfig } from './types/complex';
@@ -9,12 +9,33 @@ import './App.css';
 
 function App() {
   const [expressions, setExpressions] = useState<PlotExpression[]>([]);
-  const [viewport, setViewport] = useState({ offsetX: 0, offsetY: 0, zoomLevel: 1 });
-  const [tickCrowding, setTickCrowding] = useState(2); // 1=very sparse, 5=very dense
+  const [viewport, setViewport] = useState({ offsetX: 0, offsetY: 0, zoomLevel: 0.66 });
+  const [tickCrowding, setTickCrowding] = useState(3); // 1=very sparse, 5=very dense
+  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [dimensions, setDimensions] = useState({
+    width: 800,
+    height: 600
+  });
+
+  useEffect(() => {
+    const updateDimensions = () => {
+      const controlsWidth = isCollapsed ? 0 : 320;
+      const controlsBarHeight = 40; // Account for zoom controls bar
+
+      setDimensions({
+        width: window.innerWidth - controlsWidth,
+        height: window.innerHeight - controlsBarHeight
+      });
+    };
+
+    updateDimensions();
+    window.addEventListener('resize', updateDimensions);
+    return () => window.removeEventListener('resize', updateDimensions);
+  }, [isCollapsed]);
 
   const config: PlotConfig = {
-    width: 700,
-    height: 700,
+    width: dimensions.width,
+    height: dimensions.height,
     range: 15,
     resolution: 50,
     adaptiveSampling: true,
@@ -69,7 +90,7 @@ function App() {
     }
 
     return { regions: allRegions };
-  }, [expressions, config, viewport]);
+  }, [expressions, config, viewport, dimensions]);
 
   const handleExpressionsChange = useCallback((newExpressions: PlotExpression[]) => {
     setExpressions(newExpressions);
@@ -81,11 +102,17 @@ function App() {
 
   return (
     <div className="App">
-      <header className="App-header">
-        <h1>Argand Diagram Plotter</h1>
-      </header>
-
       <main className="container">
+        <div className={`controls-container${isCollapsed ? ' collapsed' : ''}`}>
+          <ExpressionPanel
+            onExpressionsChange={handleExpressionsChange}
+            config={config}
+            onPlotGenerated={() => {}} // No-op since plot data is generated from expressions
+            isCollapsed={isCollapsed}
+            onToggleCollapse={() => setIsCollapsed(!isCollapsed)}
+          />
+        </div>
+
         <div className="diagram-container">
           <ArgandDiagram
             elements={[]}
@@ -98,17 +125,11 @@ function App() {
             onViewportChange={handleViewportChange}
             tickCrowding={tickCrowding}
             onTickCrowdingChange={setTickCrowding}
+            isControlsCollapsed={isCollapsed}
+            onToggleControls={() => setIsCollapsed(!isCollapsed)}
           />
         </div>
-
-        <div className="controls-container">
-          <ExpressionPanel
-            onExpressionsChange={handleExpressionsChange}
-            config={config}
-            onPlotGenerated={() => {}} // No-op since plot data is generated from expressions
-          />
-        </div>
-      </main>
+          </main>
     </div>
   );
 }
