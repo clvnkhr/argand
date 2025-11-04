@@ -13,6 +13,8 @@ interface ExpressionPanelProps {
   onPlotGenerated: (plotData: any) => void;
   isCollapsed?: boolean;
   onToggleCollapse?: () => void;
+  showAllLabels?: boolean;
+  onShowAllLabelsChange?: (showAllLabels: boolean) => void;
 }
 
 export const ExpressionPanel: React.FC<ExpressionPanelProps> = ({
@@ -20,7 +22,9 @@ export const ExpressionPanel: React.FC<ExpressionPanelProps> = ({
   config,
   onPlotGenerated,
   isCollapsed = false,
-  onToggleCollapse
+  onToggleCollapse,
+  showAllLabels = false,
+  onShowAllLabelsChange
 }) => {
   const [expressions, setExpressions] = useState<PlotExpression[]>([]);
   const [namedVariables, setNamedVariables] = useState<NamedVariable[]>([]);
@@ -305,6 +309,17 @@ export const ExpressionPanel: React.FC<ExpressionPanelProps> = ({
       <div className="px-4 py-3 border-b flex items-center justify-between w-full">
         <h3 className="text-sm font-semibold expression-label flex-shrink-0">Expressions</h3>
         <div style={{ display: 'flex', gap: '4px' }}>
+          <button
+            onClick={() => onShowAllLabelsChange?.(!showAllLabels)}
+            className={`w-6 h-6 flex items-center justify-center rounded border transition-all duration-200 expression-item text-xs expression-label flex-shrink-0 ${
+              showAllLabels
+                ? 'border-solid bg-blue-100 border-blue-300'
+                : 'border-2 border-dashed hover:border-solid'
+            }`}
+            title={showAllLabels ? "Hide All Labels" : "Show All Labels"}
+          >
+            🏷️
+          </button>
           <button
             onClick={addNewExpression}
             className="w-6 h-6 flex items-center justify-center rounded border-2 border-dashed hover:border-solid transition-all duration-200 expression-item text-sm expression-label flex-shrink-0"

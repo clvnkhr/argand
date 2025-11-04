@@ -12,6 +12,7 @@ function App() {
   const [viewport, setViewport] = useState({ offsetX: 0, offsetY: 0, zoomLevel: 0.66 });
   const [tickCrowding, setTickCrowding] = useState(3); // 1=very sparse, 5=very dense
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [showAllLabels, setShowAllLabels] = useState(false);
   const [dimensions, setDimensions] = useState({
     width: 800,
     height: 600
@@ -110,6 +111,8 @@ function App() {
             onPlotGenerated={() => {}} // No-op since plot data is generated from expressions
             isCollapsed={isCollapsed}
             onToggleCollapse={() => setIsCollapsed(!isCollapsed)}
+            showAllLabels={showAllLabels}
+            onShowAllLabelsChange={setShowAllLabels}
           />
         </div>
 
@@ -127,6 +130,7 @@ function App() {
             onTickCrowdingChange={setTickCrowding}
             isControlsCollapsed={isCollapsed}
             onToggleControls={() => setIsCollapsed(!isCollapsed)}
+            showAllLabels={showAllLabels}
           />
         </div>
           </main>
