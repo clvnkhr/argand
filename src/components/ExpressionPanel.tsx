@@ -36,7 +36,9 @@ export const ExpressionPanel: React.FC<ExpressionPanelProps> = ({
   const [parseError, setParseError] = useState<string | null>(null);
   const [showTemplateSuggestions, setShowTemplateSuggestions] = useState(false);
   const [filteredSuggestions, setFilteredSuggestions] = useState<ExpressionTemplate[]>([]);
-  
+  const [isInternalClick, setIsInternalClick] = useState(false);
+  const internalClickRef = useRef(false);
+
   // Function to generate random colors
   const generateRandomColor = useCallback(() => {
     const colors = [
@@ -67,14 +69,17 @@ export const ExpressionPanel: React.FC<ExpressionPanelProps> = ({
 
   // Helper functions for inline editing
   const startEdit = useCallback((index: number) => {
+    console.log('DEBUG: startEdit called for index', index);
+    console.log('DEBUG: Current editingIndex:', editingIndex);
     const expr = expressions[index];
+    console.log('DEBUG: Expression data:', expr);
     setEditingIndex(index);
     setEditingExpression(expr.expression);
     setEditingLabel(expr.label || '');
     setEditingColor(expr.color || '#4ecdc4');
     setEditingLineThickness(expr.lineThickness || 2);
     setParseError(null);
-  }, [expressions]);
+  }, [expressions, editingIndex]);
 
   const cancelEdit = useCallback(() => {
     setEditingIndex(null);
@@ -87,17 +92,25 @@ export const ExpressionPanel: React.FC<ExpressionPanelProps> = ({
   }, []);
 
   const saveEdit = useCallback(() => {
-    if (editingIndex === null) return;
+    console.log('DEBUG: saveEdit called');
+    console.log('DEBUG: editingIndex:', editingIndex);
+    if (editingIndex === null) {
+      console.log('DEBUG: No editing index, returning');
+      return;
+    }
 
     const cleanExpression = editingExpression.trim();
     if (!cleanExpression) {
+      console.log('DEBUG: Empty expression, setting error');
       setParseError('Expression cannot be empty');
       return;
     }
 
     try {
+      console.log('DEBUG: Parsing expression:', cleanExpression);
       const result = parser.parseExpressionString(cleanExpression);
       if (result.error) {
+        console.log('DEBUG: Parse error:', result.error);
         setParseError(result.error);
         return;
       }
@@ -118,20 +131,23 @@ export const ExpressionPanel: React.FC<ExpressionPanelProps> = ({
       const currentExpression = updatedExpressions[editingIndex];
       const plotResult = plotter.plotExpression(result.ast, cleanExpression, currentExpression);
       if (plotResult.error) {
+        console.log('DEBUG: Plotting error:', plotResult.error);
         setParseError(`Plotting error: ${plotResult.error}`);
         return;
       }
 
+      console.log('DEBUG: Save successful, calling cancelEdit');
       setExpressions(updatedExpressions);
       onExpressionsChange(updatedExpressions);
       onPlotGenerated(plotResult);
       cancelEdit();
     } catch (error) {
+      console.log('DEBUG: Save error:', error);
       setParseError(error instanceof Error ? error.message : 'Error saving expression');
     }
   }, [editingIndex, editingExpression, editingLabel, editingColor, editingLineThickness, expressions, parser, plotter, onExpressionsChange, onPlotGenerated, cancelEdit]);
 
-  
+
   const addNewExpression = useCallback(() => {
     const newExpr: PlotExpression = {
       type: 'point',
@@ -242,11 +258,10 @@ export const ExpressionPanel: React.FC<ExpressionPanelProps> = ({
         <div style={{ display: 'flex', gap: '4px' }}>
           <button
             onClick={() => onShowAllLabelsChange?.(!showAllLabels)}
-            className={`w-6 h-6 flex items-center justify-center rounded border transition-all duration-200 expression-item text-xs expression-label flex-shrink-0 ${
-              showAllLabels
-                ? 'border-solid bg-blue-100 border-blue-300'
-                : 'border-2 border-dashed hover:border-solid'
-            }`}
+            className={`w-6 h-6 flex items-center justify-center rounded border transition-all duration-200 expression-item text-xs expression-label flex-shrink-0 ${showAllLabels
+              ? 'border-solid bg-blue-100 border-blue-300'
+              : 'border-2 border-dashed hover:border-solid'
+              }`}
             title={showAllLabels ? "Hide All Labels" : "Show All Labels"}
           >
             🏷️
@@ -268,10 +283,10 @@ export const ExpressionPanel: React.FC<ExpressionPanelProps> = ({
         </div>
       </div>
 
-          {/* Scrollable content */}
+      {/* Scrollable content */}
       <div className="flex-1 overflow-y-auto">
         <div className="p-2 space-y-2">
-  
+
           {/* Error Display */}
           {parseError && (
             <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 px-3 py-2 rounded-lg text-sm">
@@ -284,7 +299,64 @@ export const ExpressionPanel: React.FC<ExpressionPanelProps> = ({
             <div key={index} className="expression-item border rounded-lg">
               {editingIndex === index ? (
                 // Edit Mode - Unified interface
-                <div className="p-2 space-y-3">
+                <div
+                  className="p-2 space-y-3 expression-editor-container"
+                  onMouseDown={(e) => {
+                    // Set flag to indicate this is an internal click
+                    console.log('DEBUG: Mouse down inside editor container', e.target);
+                    setIsInternalClick(true);
+                    internalClickRef.current = true;
+
+                    // Prevent click from bubbling up to the parent read-mode div
+                    e.stopPropagation();
+                  }}
+                  onBlur={(e) => {
+                    console.log('DEBUG: Blur event triggered');
+                    console.log('DEBUG: isInternalClick (state):', isInternalClick);
+                    console.log('DEBUG: isInternalClick (ref):', internalClickRef.current);
+
+                    // If this blur is part of an internal click, don't auto-save and refocus
+                    if (isInternalClick || internalClickRef.current) {
+                      console.log('DEBUG: Blur during internal click, not saving and will refocus');
+
+                      // Reset the ref immediately
+                      internalClickRef.current = false;
+
+                      // Store the editor container reference before setTimeout
+                      const editorContainer = e.currentTarget;
+
+                      // Reset state after short delay and refocus the first input
+                      setTimeout(() => {
+                        setIsInternalClick(false);
+                        // Find and focus the expression input
+                        const expressionInput = editorContainer.querySelector('input[type="text"]') as HTMLInputElement;
+                        if (expressionInput) {
+                          expressionInput.focus();
+                        }
+                      }, 10);
+                      return;
+                    }
+
+                    // Only save if focus is moving outside the entire expression editor
+                    // Check if the new focus target is not within this editor container
+                    const editorContainer = e.currentTarget;
+                    const newFocusTarget = e.relatedTarget;
+
+                    console.log('DEBUG: Editor container:', editorContainer);
+                    console.log('DEBUG: New focus target:', newFocusTarget);
+                    console.log('DEBUG: Editor contains new target:', editorContainer.contains(newFocusTarget));
+
+                    if (!editorContainer.contains(newFocusTarget)) {
+                      console.log('DEBUG: Focus moved outside editor, saving in 100ms');
+                      setTimeout(() => {
+                        console.log('DEBUG: Executing saveEdit');
+                        saveEdit();
+                      }, 100); // Small delay to allow other interactions
+                    } else {
+                      console.log('DEBUG: Focus moved within editor, not saving');
+                    }
+                  }}
+                >
                   <div className="flex gap-1 items-center">
                     <input
                       type="text"
@@ -296,7 +368,6 @@ export const ExpressionPanel: React.FC<ExpressionPanelProps> = ({
                           saveEdit();
                         }
                       }}
-                      onBlur={saveEdit}
                       placeholder="Enter expression..."
                       className="expression-input flex-1 px-2 py-1 text-xs border rounded transition-all duration-200"
                       autoFocus
@@ -305,35 +376,22 @@ export const ExpressionPanel: React.FC<ExpressionPanelProps> = ({
                       type="text"
                       value={editingLabel}
                       onChange={(e) => setEditingLabel(e.target.value)}
-                      onBlur={saveEdit}
                       placeholder="Label"
                       className="expression-input w-12 px-1 py-1 text-xs border rounded transition-all duration-200"
                     />
                   </div>
 
                   {/* Style Controls - Always visible in edit mode */}
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-4">
                     <div className="flex items-center gap-2">
-                      <div
-                        className="w-6 h-4 border-2 rounded bg-white dark:bg-gray-800 flex items-center justify-center"
-                        style={{ borderColor: editingColor }}
-                      >
-                        <div
-                          className="rounded"
-                          style={{
-                            width: '16px',
-                            backgroundColor: editingColor,
-                            height: `${Math.max(editingLineThickness || 2, 4)}px`,
-                            minWidth: '16px'
-                          }}
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="color"
+                          value={editingColor}
+                          onChange={(e) => setEditingColor(e.target.value)}
+                          className="w-8 h-8 expression-input border rounded cursor-pointer"
                         />
                       </div>
-                      <input
-                        type="color"
-                        value={editingColor}
-                        onChange={(e) => setEditingColor(e.target.value)}
-                        className="w-8 h-8 expression-input border rounded cursor-pointer"
-                      />
                     </div>
 
                     <div className="flex items-center gap-2 flex-1">
@@ -369,50 +427,54 @@ export const ExpressionPanel: React.FC<ExpressionPanelProps> = ({
               ) : (
                 // Read Mode
                 <div
-                  className="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-                  onClick={() => startEdit(index)}
+                  className="flex items-center justify-between p-2 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                  onClick={(e) => {
+                    console.log('DEBUG: Read-mode div clicked, starting edit for index', index);
+                    console.log('DEBUG: Click target:', e.target);
+                    startEdit(index);
+                  }}
                 >
-                  {/* Color indicator bar - full width */}
                   <div
-                    className="w-full"
-                    style={{
-                      height: `${Math.max(expr.lineThickness || 2, 3)}px`,
-                      backgroundColor: expr.color || '#4ecdc4',
-                      minHeight: '3px'
-                    }}
+                    className="w-6 h-4 border-2 rounded bg-white dark:bg-gray-800 flex items-center justify-center flex-shrink-0 mr-1"
+                    style={{ borderColor: expr.color || '#4ecdc4' }}
                     title="Color and style indicator"
-                  />
-
-                  {/* Content row */}
-                  <div className="flex items-center justify-between p-2">
-                    {expr.label && <span className="font-medium expression-label text-xs mr-1">{expr.label}:</span>}
-                    <span className="text-xs flex-1 whitespace-nowrap">
-                      <ComplexExpressionDisplay
-                        expression={expr.expression}
-                        className="text-blue-600 dark:text-blue-400"
-                      />
-                    </span>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleExpression(index);
+                  >
+                    <div
+                      className="rounded"
+                      style={{
+                        backgroundColor: expr.color || '#4ecdc4',
+                        height: `${Math.max(expr.lineThickness || 2, 4)}px`,
+                        minWidth: '16px'
                       }}
-                      className={`hover:opacity-70 transition-opacity text-xs flex-shrink-0 w-4 h-4 flex items-center justify-center ${expr.visible === false ? 'text-gray-400 opacity-50' : 'text-blue-500'}`}
-                      title={`Toggle visibility (${expr.visible === false ? 'hidden' : 'visible'})`}
-                    >
-                      {expr.visible === false ? '👁️‍🗨️' : '👁️'}
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        removeExpression(index);
-                      }}
-                      className="text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300 transition-colors text-xs flex-shrink-0 w-4 h-4 flex items-center justify-center"
-                      title="Remove expression"
-                    >
-                      ✕
-                    </button>
+                    />
                   </div>
+                  {expr.label && <span className="font-medium expression-label text-xs mr-1">{expr.label}:</span>}
+                  <span className="text-xs flex-1 whitespace-nowrap">
+                    <ComplexExpressionDisplay
+                      expression={expr.expression}
+                      className="text-blue-600 dark:text-blue-400"
+                    />
+                  </span>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleExpression(index);
+                    }}
+                    className={`hover:opacity-70 transition-opacity text-xs flex-shrink-0 w-4 h-4 flex items-center justify-center ${expr.visible === false ? 'text-gray-400 opacity-50' : 'text-blue-500'}`}
+                    title={`Toggle visibility (${expr.visible === false ? 'hidden' : 'visible'})`}
+                  >
+                    {expr.visible === false ? '👁️‍🗨️' : '👁️'}
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      removeExpression(index);
+                    }}
+                    className="text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300 transition-colors text-xs flex-shrink-0 w-4 h-4 flex items-center justify-center"
+                    title="Remove expression"
+                  >
+                    ✕
+                  </button>
                 </div>
               )}
             </div>

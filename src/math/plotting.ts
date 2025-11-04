@@ -389,18 +389,18 @@ export class HybridPlotter {
 
     // Check for simple linear equations like Im(z) = constant or Re(z) = constant
     if (this.isLinearEquality(ast)) {
-      console.log('Linear equality detected:', JSON.stringify(ast, null, 2));
+      // console.log('Linear equality detected:', JSON.stringify(ast, null, 2));
       const lineResult = this.extractLinearConstants(ast);
       if (lineResult) {
-        console.log('Line result:', lineResult);
+        // console.log('Line result:', lineResult);
         const line = this.generateStraightLine(lineResult);
-        console.log('Generated line points:', line[0].length, 'points');
+        // console.log('Generated line points:', line[0].length, 'points');
         return line;
       } else {
-        console.log('Failed to extract line constants');
+        // console.log('Failed to extract line constants');
       }
     } else {
-      console.log('Not a linear equality, AST type:', ast.type, 'operator:', (ast as any).operator);
+      // console.log('Not a linear equality, AST type:', ast.type, 'operator:', (ast as any).operator);
     }
 
     return null;
@@ -673,37 +673,37 @@ export class HybridPlotter {
 
   private isLinearEquality(ast: ASTNode): boolean {
     // Check if AST matches patterns like: Im(z) = constant or Re(z) = constant
-    console.log('isLinearEquality check - AST type:', ast.type, 'operator:', ast.operator);
+    // console.log('isLinearEquality check - AST type:', ast.type, 'operator:', ast.operator);
 
     if (ast.type !== 'binary' || ast.operator !== '=') {
-      console.log('Failed binary check - not binary or not = operator');
+      // console.log('Failed binary check - not binary or not = operator');
       return false;
     }
 
     const left = ast.left;
     const right = ast.right;
 
-    console.log('Left AST:', JSON.stringify(left, null, 2));
-    console.log('Right AST:', JSON.stringify(right, null, 2));
-    console.log('Right type:', right.type);
+    // console.log('Left AST:', JSON.stringify(left, null, 2));
+    // console.log('Right AST:', JSON.stringify(right, null, 2));
+    // console.log('Right type:', right.type);
 
     // Check for Im(z) = constant or Re(z) = constant (or negative constants)
     const isRightValid = right.type === 'number' ||
       (right.type === 'unary' && right.operator === '-' && right.operand && right.operand.type === 'number');
 
-    console.log('Is right side valid:', isRightValid);
+    // console.log('Is right side valid:', isRightValid);
 
     if (isRightValid) {
       const isIm = this.isImaginaryPart(left);
       const isRe = this.isRealPart(left);
-      console.log('Is imaginary part:', isIm, 'Is real part:', isRe);
+      // console.log('Is imaginary part:', isIm, 'Is real part:', isRe);
 
       if (isIm || isRe) {
         return true;
       }
     }
 
-    console.log('Linear equality check failed');
+    // console.log('Linear equality check failed');
     return false;
   }
 
@@ -733,8 +733,8 @@ export class HybridPlotter {
     const left = ast.left;
     const right = ast.right;
 
-    console.log('Right side AST:', JSON.stringify(right, null, 2));
-    console.log('Right side type:', right.type);
+    // console.log('Right side AST:', JSON.stringify(right, null, 2));
+    // console.log('Right side type:', right.type);
 
     // Handle both direct numbers and unary minus expressions
     let value: number | null = null;
@@ -746,7 +746,7 @@ export class HybridPlotter {
       value = -(right.operand.value as number);
     }
 
-    console.log('Extracted value:', value);
+    // console.log('Extracted value:', value);
 
     if (value !== null) {
       if (this.isImaginaryPart(left)) {
@@ -1138,13 +1138,13 @@ export class HybridPlotter {
       const next = this.rk4Step(ast, current, stepSize * direction);
 
       if (!next) {
-        console.log('RK4 step returned null, stopping trace');
+        // console.log('RK4 step returned null, stopping trace');
         break;
       }
 
       // Check for numerical issues
       if (!isFinite(next.x) || !isFinite(next.y)) {
-        console.log('Numerical issues detected, stopping trace');
+        // console.log('Numerical issues detected, stopping trace');
         break;
       }
 
@@ -1154,7 +1154,7 @@ export class HybridPlotter {
                                Math.abs(viewportRange.minY), Math.abs(viewportRange.maxY));
 
       if (Math.abs(next.x) > maxBound * 1.1 || Math.abs(next.y) > maxBound * 1.1) {
-        console.log(`Point (${next.x.toFixed(2)}, ${next.y.toFixed(2)}) out of bounds, stopping trace`);
+        // console.log(`Point (${next.x.toFixed(2)}, ${next.y.toFixed(2)}) out of bounds, stopping trace`);
         // Still add the out-of-bounds point if it's not too far
         if (Math.abs(next.x) <= maxBound * 1.2 && Math.abs(next.y) <= maxBound * 1.2) {
           path.push(next);
