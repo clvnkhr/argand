@@ -381,7 +381,7 @@ const ArgandDiagram: React.FC<ArgandDiagramProps> = ({
             y1={0}
             x2={screen.x}
             y2={height}
-            stroke="#e0e0e0"
+            className="diagram-grid-line"
             strokeWidth="1"
           />
         );
@@ -399,7 +399,7 @@ const ArgandDiagram: React.FC<ArgandDiagramProps> = ({
             y1={screen.y}
             x2={width}
             y2={screen.y}
-            stroke="#e0e0e0"
+            className="diagram-grid-line"
             strokeWidth="1"
           />
         );
@@ -430,7 +430,7 @@ const ArgandDiagram: React.FC<ArgandDiagramProps> = ({
               y1={toScreenCoords(0, 0).y - tickSize}
               x2={screen.x}
               y2={toScreenCoords(0, 0).y + tickSize}
-              stroke="black"
+              className="diagram-text-secondary"
               strokeWidth="1"
             />
           );
@@ -450,7 +450,7 @@ const ArgandDiagram: React.FC<ArgandDiagramProps> = ({
               y1={screen.y}
               x2={toScreenCoords(0, 0).x + tickSize}
               y2={screen.y}
-              stroke="black"
+              className="diagram-text-secondary"
               strokeWidth="1"
             />
           );
@@ -826,7 +826,7 @@ const ArgandDiagram: React.FC<ArgandDiagramProps> = ({
           y1={toScreenCoords(0, 0).y}
           x2={width}
           y2={toScreenCoords(0, 0).y}
-          stroke="black"
+          className="diagram-axis"
           strokeWidth="1"
         />
         <line
@@ -834,7 +834,7 @@ const ArgandDiagram: React.FC<ArgandDiagramProps> = ({
           y1="0"
           x2={toScreenCoords(0, 0).x}
           y2={height}
-          stroke="black"
+          className="diagram-axis"
           strokeWidth="1"
         />
 
@@ -875,7 +875,7 @@ const ArgandDiagram: React.FC<ArgandDiagramProps> = ({
                     x={screen.x}
                     y={toScreenCoords(0, 0).y + 20}
                     fontSize="10"
-                    fill="black"
+                    className="diagram-text-primary"
                     textAnchor="middle"
                   >
                     {x % 1 === 0 ? x.toFixed(0) : x.toFixed(1)}
@@ -896,7 +896,7 @@ const ArgandDiagram: React.FC<ArgandDiagramProps> = ({
                     x={toScreenCoords(0, 0).x - 10}
                     y={screen.y + 3}
                     fontSize="10"
-                    fill="black"
+                    className="diagram-text-primary"
                     textAnchor="end"
                   >
                     {y % 1 === 0 ? y.toFixed(0) : y.toFixed(1)}
