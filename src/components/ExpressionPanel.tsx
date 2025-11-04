@@ -184,6 +184,41 @@ export const ExpressionPanel: React.FC<ExpressionPanelProps> = ({
     closeStylePanel();
   }, [expressions, tempColor, tempLineThickness, onExpressionsChange, onPlotGenerated, closeStylePanel, editingIndex]);
 
+  const applyStyleChangesImmediate = useCallback((index: number, color: string, thickness: number) => {
+    const updatedExpressions = [...expressions];
+    const expression = updatedExpressions[index];
+    const updatedExpression = {
+      ...expression,
+      color: color,
+      lineThickness: thickness
+    };
+    updatedExpressions[index] = updatedExpression;
+
+    setExpressions(updatedExpressions);
+    onExpressionsChange(updatedExpressions);
+
+    // Re-plot the expression with new style settings
+    try {
+      const parser = new ExpressionParser();
+      const result = parser.parseExpressionString(expression.expression);
+
+      if (!result.error && expression.expression) {
+        const plotResult = plotter.plotExpression(result.ast, expression.expression, updatedExpression);
+        if (plotResult.regions && plotResult.regions.length > 0) {
+          onPlotGenerated(plotResult);
+        }
+      }
+    } catch (error) {
+      console.error('Error re-plotting expression after style change:', error);
+    }
+
+    // Also update editing state if this expression is currently being edited
+    if (editingIndex === index) {
+      setEditingColor(color);
+      setEditingLineThickness(thickness);
+    }
+  }, [expressions, onExpressionsChange, onPlotGenerated, editingIndex]);
+
   // Close style panel when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -357,7 +392,7 @@ export const ExpressionPanel: React.FC<ExpressionPanelProps> = ({
                   <div className="flex gap-1 items-center">
                     <div className="relative">
                       <div
-                        className="w-8 h-4 border-2 rounded cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-all duration-200 bg-white dark:bg-gray-800 flex items-center justify-center"
+                        className="w-6 h-4 border-2 rounded cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-all duration-200 bg-white dark:bg-gray-800 flex items-center justify-center"
                         style={{ borderColor: editingColor }}
                         onClick={(e) => {
                           e.stopPropagation();
@@ -368,10 +403,10 @@ export const ExpressionPanel: React.FC<ExpressionPanelProps> = ({
                         <div
                           className="rounded-full"
                           style={{
-                            width: '24px',
+                            width: '16px',
                             backgroundColor: editingColor,
                             height: `${Math.max(editingLineThickness || 2, 4)}px`,
-                            minWidth: '24px'
+                            minWidth: '16px'
                           }}
                         ></div>
                       </div>
@@ -379,28 +414,17 @@ export const ExpressionPanel: React.FC<ExpressionPanelProps> = ({
                       {showStylePanel === index && (
                         <div className="absolute top-full left-0 mt-1 z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-lg p-3 min-w-48 style-panel-container">
                           <div className="space-y-3">
-                            {/* Line Preview */}
-                            <div className="flex items-center justify-center py-2">
-                              <svg className="w-full h-6" viewBox="0 0 200 24">
-                                <line
-                                  x1="10"
-                                  y1="12"
-                                  x2="190"
-                                  y2="12"
-                                  stroke={tempColor}
-                                  strokeWidth={tempLineThickness}
-                                  strokeLinecap="round"
-                                />
-                              </svg>
-                            </div>
-
                             {/* Color Picker */}
                             <div className="flex items-center gap-2">
                               <label className="text-xs font-medium expression-label">Color:</label>
                               <input
                                 type="color"
                                 value={tempColor}
-                                onChange={(e) => setTempColor(e.target.value)}
+                                onChange={(e) => {
+                                  const newColor = e.target.value;
+                                  setTempColor(newColor);
+                                  setEditingColor(newColor);
+                                }}
                                 className="w-8 h-8 expression-input border rounded cursor-pointer"
                               />
                             </div>
@@ -417,29 +441,17 @@ export const ExpressionPanel: React.FC<ExpressionPanelProps> = ({
                                 max="5"
                                 step="1"
                                 value={tempLineThickness}
-                                onChange={(e) => setTempLineThickness(Number(e.target.value))}
+                                onChange={(e) => {
+                                  const newThickness = Number(e.target.value);
+                                  setTempLineThickness(newThickness);
+                                  setEditingLineThickness(newThickness);
+                                }}
                                 className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
                               />
                               <div className="flex justify-between text-xs text-gray-500">
                                 <span>1</span>
                                 <span>5</span>
                               </div>
-                            </div>
-
-                            {/* Action Buttons */}
-                            <div className="flex gap-2 pt-2 border-t border-gray-200 dark:border-gray-600">
-                              <button
-                                onClick={() => applyStyleChanges(index)}
-                                className="flex-1 px-2 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
-                              >
-                                Apply
-                              </button>
-                              <button
-                                onClick={closeStylePanel}
-                                className="flex-1 px-2 py-1 text-xs bg-gray-200 text-gray-700 rounded hover:bg-gray-300 transition-colors"
-                              >
-                                Cancel
-                              </button>
                             </div>
                           </div>
                         </div>
@@ -505,52 +517,39 @@ export const ExpressionPanel: React.FC<ExpressionPanelProps> = ({
                   className="flex items-center justify-between p-2 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
                   onClick={() => startEdit(index)}
                 >
-                  <div className="relative">
+                  <div
+                    className="w-6 h-4 border-2 rounded cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-all duration-200 bg-white dark:bg-gray-800 flex items-center justify-center flex-shrink-0 relative mr-1"
+                    style={{ borderColor: expr.color || '#4ecdc4' }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openStylePanel(index);
+                    }}
+                    title="Click to change color & style"
+                  >
                     <div
-                        className="w-8 h-4 border-2 rounded cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-all duration-200 bg-white dark:bg-gray-800 flex items-center justify-center flex-shrink-0"
-                        style={{ borderColor: expr.color || '#4ecdc4' }}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          openStylePanel(index);
-                        }}
-                        title="Click to change color & style"
-                      >
-                        <div
-                          className="rounded-full"
-                          style={{
-                            width: '24px',
-                            backgroundColor: expr.color || '#4ecdc4',
-                            height: `${Math.max(expr.lineThickness || 2, 4)}px`,
-                            minWidth: '24px'
-                          }}
-                        ></div>
-                      </div>
+                      className="rounded"
+                      style={{
+                        width: '16px',
+                        backgroundColor: expr.color || '#4ecdc4',
+                        height: `${Math.max(expr.lineThickness || 2, 4)}px`,
+                        minWidth: '16px'
+                      }}
+                    />
 
-                      {showStylePanel === index && (
+                    {showStylePanel === index && (
                       <div className="absolute top-full left-0 mt-1 z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-lg p-3 min-w-48 style-panel-container">
                         <div className="space-y-3">
-                          {/* Line Preview */}
-                          <div className="flex items-center justify-center py-2">
-                            <svg className="w-full h-6" viewBox="0 0 200 24">
-                              <line
-                                x1="10"
-                                y1="12"
-                                x2="190"
-                                y2="12"
-                                stroke={tempColor}
-                                strokeWidth={tempLineThickness}
-                                strokeLinecap="round"
-                              />
-                            </svg>
-                          </div>
-
                           {/* Color Picker */}
                           <div className="flex items-center gap-2">
                             <label className="text-xs font-medium expression-label">Color:</label>
                             <input
                               type="color"
                               value={tempColor}
-                              onChange={(e) => setTempColor(e.target.value)}
+                              onChange={(e) => {
+                                const newColor = e.target.value;
+                                setTempColor(newColor);
+                                applyStyleChangesImmediate(index, newColor, tempLineThickness);
+                              }}
                               className="w-8 h-8 expression-input border rounded cursor-pointer"
                             />
                           </div>
@@ -567,7 +566,11 @@ export const ExpressionPanel: React.FC<ExpressionPanelProps> = ({
                               max="5"
                               step="1"
                               value={tempLineThickness}
-                              onChange={(e) => setTempLineThickness(Number(e.target.value))}
+                              onChange={(e) => {
+                                const newThickness = Number(e.target.value);
+                                setTempLineThickness(newThickness);
+                                applyStyleChangesImmediate(index, tempColor, newThickness);
+                              }}
                               className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
                             />
                             <div className="flex justify-between text-xs text-gray-500">
@@ -575,28 +578,12 @@ export const ExpressionPanel: React.FC<ExpressionPanelProps> = ({
                               <span>5</span>
                             </div>
                           </div>
-
-                          {/* Action Buttons */}
-                          <div className="flex gap-2 pt-2 border-t border-gray-200 dark:border-gray-600">
-                            <button
-                              onClick={() => applyStyleChanges(index)}
-                              className="flex-1 px-2 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
-                            >
-                              Apply
-                            </button>
-                            <button
-                              onClick={closeStylePanel}
-                              className="flex-1 px-2 py-1 text-xs bg-gray-200 text-gray-700 rounded hover:bg-gray-300 transition-colors"
-                            >
-                              Cancel
-                            </button>
-                          </div>
                         </div>
                       </div>
                     )}
                   </div>
-                  {expr.label && <span className="font-medium expression-label text-xs">{expr.label}:</span>}
-                  <span className="text-xs flex-1">
+                  {expr.label && <span className="font-medium expression-label text-xs mr-1">{expr.label}:</span>}
+                  <span className="text-xs flex-1 whitespace-nowrap">
                     <ComplexExpressionDisplay
                       expression={expr.expression}
                       className="text-blue-600 dark:text-blue-400"
