@@ -36,10 +36,7 @@ export const ExpressionPanel: React.FC<ExpressionPanelProps> = ({
   const [parseError, setParseError] = useState<string | null>(null);
   const [showTemplateSuggestions, setShowTemplateSuggestions] = useState(false);
   const [filteredSuggestions, setFilteredSuggestions] = useState<ExpressionTemplate[]>([]);
-  const [showStylePanel, setShowStylePanel] = useState<number | null>(null);
-  const [tempColor, setTempColor] = useState('#4ecdc4');
-  const [tempLineThickness, setTempLineThickness] = useState(2);
-
+  
   // Function to generate random colors
   const generateRandomColor = useCallback(() => {
     const colors = [
@@ -128,114 +125,13 @@ export const ExpressionPanel: React.FC<ExpressionPanelProps> = ({
       setExpressions(updatedExpressions);
       onExpressionsChange(updatedExpressions);
       onPlotGenerated(plotResult);
-      closeStylePanel(); // Close any open style panel
       cancelEdit();
     } catch (error) {
       setParseError(error instanceof Error ? error.message : 'Error saving expression');
     }
   }, [editingIndex, editingExpression, editingLabel, editingColor, editingLineThickness, expressions, parser, plotter, onExpressionsChange, onPlotGenerated, cancelEdit]);
 
-  // Style panel management
-  const closeStylePanel = useCallback(() => {
-    setShowStylePanel(null);
-  }, []);
-
-  const openStylePanel = useCallback((index: number) => {
-    const expr = expressions[index];
-    setTempColor(expr.color || '#4ecdc4');
-    setTempLineThickness(expr.lineThickness || 2);
-    setShowStylePanel(index);
-  }, [expressions]);
-
-  const applyStyleChanges = useCallback((index: number) => {
-    const updatedExpressions = [...expressions];
-    const expression = updatedExpressions[index];
-    const updatedExpression = {
-      ...expression,
-      color: tempColor,
-      lineThickness: tempLineThickness
-    };
-    updatedExpressions[index] = updatedExpression;
-
-    setExpressions(updatedExpressions);
-    onExpressionsChange(updatedExpressions);
-
-    // Re-plot the expression with new style settings
-    try {
-      const parser = new ExpressionParser();
-      const result = parser.parseExpressionString(expression.expression);
-
-      if (!result.error && expression.expression) {
-        const plotResult = plotter.plotExpression(result.ast, expression.expression, updatedExpression);
-        if (plotResult.regions && plotResult.regions.length > 0) {
-          onPlotGenerated(plotResult);
-        }
-      }
-    } catch (error) {
-      console.error('Error re-plotting expression after style change:', error);
-    }
-
-    // Also update editing state if this expression is currently being edited
-    if (editingIndex === index) {
-      setEditingColor(tempColor);
-      setEditingLineThickness(tempLineThickness);
-    }
-
-    closeStylePanel();
-  }, [expressions, tempColor, tempLineThickness, onExpressionsChange, onPlotGenerated, closeStylePanel, editingIndex]);
-
-  const applyStyleChangesImmediate = useCallback((index: number, color: string, thickness: number) => {
-    const updatedExpressions = [...expressions];
-    const expression = updatedExpressions[index];
-    const updatedExpression = {
-      ...expression,
-      color: color,
-      lineThickness: thickness
-    };
-    updatedExpressions[index] = updatedExpression;
-
-    setExpressions(updatedExpressions);
-    onExpressionsChange(updatedExpressions);
-
-    // Re-plot the expression with new style settings
-    try {
-      const parser = new ExpressionParser();
-      const result = parser.parseExpressionString(expression.expression);
-
-      if (!result.error && expression.expression) {
-        const plotResult = plotter.plotExpression(result.ast, expression.expression, updatedExpression);
-        if (plotResult.regions && plotResult.regions.length > 0) {
-          onPlotGenerated(plotResult);
-        }
-      }
-    } catch (error) {
-      console.error('Error re-plotting expression after style change:', error);
-    }
-
-    // Also update editing state if this expression is currently being edited
-    if (editingIndex === index) {
-      setEditingColor(color);
-      setEditingLineThickness(thickness);
-    }
-  }, [expressions, onExpressionsChange, onPlotGenerated, editingIndex]);
-
-  // Close style panel when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (showStylePanel !== null) {
-        const target = event.target as Element;
-        if (!target.closest('.style-panel-container')) {
-          closeStylePanel();
-        }
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [showStylePanel, closeStylePanel]);
-
+  
   const addNewExpression = useCallback(() => {
     const newExpr: PlotExpression = {
       type: 'point',
@@ -387,76 +283,9 @@ export const ExpressionPanel: React.FC<ExpressionPanelProps> = ({
           {expressions.map((expr, index) => (
             <div key={index} className="expression-item border rounded-lg">
               {editingIndex === index ? (
-                // Edit Mode
-                <div className="p-2">
+                // Edit Mode - Unified interface
+                <div className="p-2 space-y-3">
                   <div className="flex gap-1 items-center">
-                    <div className="relative">
-                      <div
-                        className="w-6 h-4 border-2 rounded cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-all duration-200 bg-white dark:bg-gray-800 flex items-center justify-center"
-                        style={{ borderColor: editingColor }}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          openStylePanel(index);
-                        }}
-                        title="Click to change color & style"
-                      >
-                        <div
-                          className="rounded-full"
-                          style={{
-                            width: '16px',
-                            backgroundColor: editingColor,
-                            height: `${Math.max(editingLineThickness || 2, 4)}px`,
-                            minWidth: '16px'
-                          }}
-                        ></div>
-                      </div>
-
-                      {showStylePanel === index && (
-                        <div className="absolute top-full left-0 mt-1 z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-lg p-3 min-w-48 style-panel-container">
-                          <div className="space-y-3">
-                            {/* Color Picker */}
-                            <div className="flex items-center gap-2">
-                              <label className="text-xs font-medium expression-label">Color:</label>
-                              <input
-                                type="color"
-                                value={tempColor}
-                                onChange={(e) => {
-                                  const newColor = e.target.value;
-                                  setTempColor(newColor);
-                                  setEditingColor(newColor);
-                                }}
-                                className="w-8 h-8 expression-input border rounded cursor-pointer"
-                              />
-                            </div>
-
-                            {/* Line Thickness Slider */}
-                            <div className="space-y-1">
-                              <div className="flex items-center justify-between">
-                                <label className="text-xs font-medium expression-label">Thickness:</label>
-                                <span className="text-xs expression-label">{tempLineThickness}</span>
-                              </div>
-                              <input
-                                type="range"
-                                min="1"
-                                max="5"
-                                step="1"
-                                value={tempLineThickness}
-                                onChange={(e) => {
-                                  const newThickness = Number(e.target.value);
-                                  setTempLineThickness(newThickness);
-                                  setEditingLineThickness(newThickness);
-                                }}
-                                className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
-                              />
-                              <div className="flex justify-between text-xs text-gray-500">
-                                <span>1</span>
-                                <span>5</span>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </div>
                     <input
                       type="text"
                       value={editingExpression}
@@ -465,11 +294,9 @@ export const ExpressionPanel: React.FC<ExpressionPanelProps> = ({
                         if (e.key === 'Enter') {
                           e.preventDefault();
                           saveEdit();
-                        } else if (e.key === 'Escape') {
-                          e.preventDefault();
-                          cancelEdit();
                         }
                       }}
+                      onBlur={saveEdit}
                       placeholder="Enter expression..."
                       className="expression-input flex-1 px-2 py-1 text-xs border rounded transition-all duration-200"
                       autoFocus
@@ -478,26 +305,54 @@ export const ExpressionPanel: React.FC<ExpressionPanelProps> = ({
                       type="text"
                       value={editingLabel}
                       onChange={(e) => setEditingLabel(e.target.value)}
+                      onBlur={saveEdit}
                       placeholder="Label"
                       className="expression-input w-12 px-1 py-1 text-xs border rounded transition-all duration-200"
                     />
-                    <button
-                      onClick={saveEdit}
-                      className="bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 px-1 py-1 rounded text-xs font-medium transition-all duration-200 border w-4 h-4 flex items-center justify-center"
-                    >
-                      ✓
-                    </button>
-                    <button
-                      onClick={cancelEdit}
-                      className="bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 px-1 py-1 rounded text-xs font-medium transition-all duration-200 border w-4 h-4 flex items-center justify-center"
-                    >
-                      ✕
-                    </button>
+                  </div>
+
+                  {/* Style Controls - Always visible in edit mode */}
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2">
+                      <div
+                        className="w-6 h-4 border-2 rounded bg-white dark:bg-gray-800 flex items-center justify-center"
+                        style={{ borderColor: editingColor }}
+                      >
+                        <div
+                          className="rounded"
+                          style={{
+                            width: '16px',
+                            backgroundColor: editingColor,
+                            height: `${Math.max(editingLineThickness || 2, 4)}px`,
+                            minWidth: '16px'
+                          }}
+                        />
+                      </div>
+                      <input
+                        type="color"
+                        value={editingColor}
+                        onChange={(e) => setEditingColor(e.target.value)}
+                        className="w-8 h-8 expression-input border rounded cursor-pointer"
+                      />
+                    </div>
+
+                    <div className="flex items-center gap-2 flex-1">
+                      <input
+                        type="range"
+                        min="1"
+                        max="5"
+                        step="1"
+                        value={editingLineThickness}
+                        onChange={(e) => setEditingLineThickness(Number(e.target.value))}
+                        className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
+                      />
+                      <span className="text-xs expression-label min-w-4">{editingLineThickness}</span>
+                    </div>
                   </div>
 
                   {/* Template Suggestions */}
                   {showTemplateSuggestions && filteredSuggestions.length > 0 && (
-                    <div className="border rounded-lg p-1 mt-1 bg-white dark:bg-gray-800">
+                    <div className="border rounded-lg p-1 bg-white dark:bg-gray-800">
                       {filteredSuggestions.map((template, index) => (
                         <div
                           key={index}
@@ -514,101 +369,50 @@ export const ExpressionPanel: React.FC<ExpressionPanelProps> = ({
               ) : (
                 // Read Mode
                 <div
-                  className="flex items-center justify-between p-2 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                  className="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
                   onClick={() => startEdit(index)}
                 >
+                  {/* Color indicator bar - full width */}
                   <div
-                    className="w-6 h-4 border-2 rounded cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-all duration-200 bg-white dark:bg-gray-800 flex items-center justify-center flex-shrink-0 relative mr-1"
-                    style={{ borderColor: expr.color || '#4ecdc4' }}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      openStylePanel(index);
+                    className="w-full"
+                    style={{
+                      height: `${Math.max(expr.lineThickness || 2, 3)}px`,
+                      backgroundColor: expr.color || '#4ecdc4',
+                      minHeight: '3px'
                     }}
-                    title="Click to change color & style"
-                  >
-                    <div
-                      className="rounded"
-                      style={{
-                        width: '16px',
-                        backgroundColor: expr.color || '#4ecdc4',
-                        height: `${Math.max(expr.lineThickness || 2, 4)}px`,
-                        minWidth: '16px'
+                    title="Color and style indicator"
+                  />
+
+                  {/* Content row */}
+                  <div className="flex items-center justify-between p-2">
+                    {expr.label && <span className="font-medium expression-label text-xs mr-1">{expr.label}:</span>}
+                    <span className="text-xs flex-1 whitespace-nowrap">
+                      <ComplexExpressionDisplay
+                        expression={expr.expression}
+                        className="text-blue-600 dark:text-blue-400"
+                      />
+                    </span>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleExpression(index);
                       }}
-                    />
-
-                    {showStylePanel === index && (
-                      <div className="absolute top-full left-0 mt-1 z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-lg p-3 min-w-48 style-panel-container">
-                        <div className="space-y-3">
-                          {/* Color Picker */}
-                          <div className="flex items-center gap-2">
-                            <label className="text-xs font-medium expression-label">Color:</label>
-                            <input
-                              type="color"
-                              value={tempColor}
-                              onChange={(e) => {
-                                const newColor = e.target.value;
-                                setTempColor(newColor);
-                                applyStyleChangesImmediate(index, newColor, tempLineThickness);
-                              }}
-                              className="w-8 h-8 expression-input border rounded cursor-pointer"
-                            />
-                          </div>
-
-                          {/* Line Thickness Slider */}
-                          <div className="space-y-1">
-                            <div className="flex items-center justify-between">
-                              <label className="text-xs font-medium expression-label">Thickness:</label>
-                              <span className="text-xs expression-label">{tempLineThickness}</span>
-                            </div>
-                            <input
-                              type="range"
-                              min="1"
-                              max="5"
-                              step="1"
-                              value={tempLineThickness}
-                              onChange={(e) => {
-                                const newThickness = Number(e.target.value);
-                                setTempLineThickness(newThickness);
-                                applyStyleChangesImmediate(index, tempColor, newThickness);
-                              }}
-                              className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
-                            />
-                            <div className="flex justify-between text-xs text-gray-500">
-                              <span>1</span>
-                              <span>5</span>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    )}
+                      className={`hover:opacity-70 transition-opacity text-xs flex-shrink-0 w-4 h-4 flex items-center justify-center ${expr.visible === false ? 'text-gray-400 opacity-50' : 'text-blue-500'}`}
+                      title={`Toggle visibility (${expr.visible === false ? 'hidden' : 'visible'})`}
+                    >
+                      {expr.visible === false ? '👁️‍🗨️' : '👁️'}
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        removeExpression(index);
+                      }}
+                      className="text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300 transition-colors text-xs flex-shrink-0 w-4 h-4 flex items-center justify-center"
+                      title="Remove expression"
+                    >
+                      ✕
+                    </button>
                   </div>
-                  {expr.label && <span className="font-medium expression-label text-xs mr-1">{expr.label}:</span>}
-                  <span className="text-xs flex-1 whitespace-nowrap">
-                    <ComplexExpressionDisplay
-                      expression={expr.expression}
-                      className="text-blue-600 dark:text-blue-400"
-                    />
-                  </span>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      toggleExpression(index);
-                    }}
-                    className={`hover:opacity-70 transition-opacity text-xs flex-shrink-0 w-4 h-4 flex items-center justify-center ${expr.visible === false ? 'text-gray-400 opacity-50' : 'text-blue-500'}`}
-                    title={`Toggle visibility (${expr.visible === false ? 'hidden' : 'visible'})`}
-                  >
-                    {expr.visible === false ? '👁️‍🗨️' : '👁️'}
-                  </button>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      removeExpression(index);
-                    }}
-                    className="text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300 transition-colors text-xs flex-shrink-0 w-4 h-4 flex items-center justify-center"
-                    title="Remove expression"
-                  >
-                    ✕
-                  </button>
                 </div>
               )}
             </div>
