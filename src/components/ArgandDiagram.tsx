@@ -41,6 +41,10 @@ const ArgandDiagram: React.FC<ArgandDiagramProps> = ({
 }) => {
   const [hoveredPoint, setHoveredPoint] = useState<Point | null>(null);
   const [hoveredRegion, setHoveredRegion] = useState<PlotRegion | null>(null);
+  const [isPanning, setIsPanning] = useState(false);
+
+  // Cache for plot regions to display during panning
+  const cachedPlotRegions = useRef<PlotRegion[]>([]);
 
   // Cache for label positions to prevent jumping during pan
   const labelPositionCache = useRef<Map<string, { x: number; y: number }>>(new Map());
@@ -136,6 +140,9 @@ const ArgandDiagram: React.FC<ArgandDiagramProps> = ({
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const svgRef = useRef<SVGSVGElement>(null);
 
+  // Debounced viewport update for performance during panning
+  const viewportUpdateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
   const baseScale = (width * 3) / (2 * range);
   const scale = baseScale * currentViewport.zoomLevel;
   const center = { x: width / 2, y: height / 2 };
@@ -157,10 +164,17 @@ const ArgandDiagram: React.FC<ArgandDiagramProps> = ({
   const handleMouseDown = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
     if (e.button === 0) { // Left mouse button only
       setIsDragging(true);
+      setIsPanning(true); // Start panning mode
+
+      // Cache current plot regions for display during panning
+      if (plotData?.regions) {
+        cachedPlotRegions.current = [...plotData.regions];
+      }
+
       setDragStart({ x: e.clientX, y: e.clientY });
       e.preventDefault();
     }
-  }, []);
+  }, [plotData]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
     const svgRect = svgRef.current?.getBoundingClientRect();
@@ -170,8 +184,8 @@ const ArgandDiagram: React.FC<ArgandDiagramProps> = ({
     const mouseY = e.clientY - svgRect.top;
     const mathCoords = toMathCoords(mouseX, mouseY);
 
-    // Check if hovering over any region
-    if (plotData?.regions && !isDragging) {
+    // Check if hovering over any region (only when not dragging and not panning)
+    if (plotData?.regions && !isDragging && !isPanning) {
       let foundHoveredRegion: PlotRegion | null = null;
 
       for (const region of plotData.regions) {
@@ -197,6 +211,8 @@ const ArgandDiagram: React.FC<ArgandDiagramProps> = ({
         offsetX: currentViewport.offsetX + mathDeltaX,
         offsetY: currentViewport.offsetY + mathDeltaY
       };
+
+      // Update viewport immediately for smooth panning
       updateViewport(newViewport);
 
       setDragStart({ x: e.clientX, y: e.clientY });
@@ -205,11 +221,19 @@ const ArgandDiagram: React.FC<ArgandDiagramProps> = ({
 
   const handleMouseUp = useCallback(() => {
     setIsDragging(false);
+    // Add a small delay before ending panning to prevent flicker
+    setTimeout(() => {
+      setIsPanning(false);
+    }, 50);
   }, []);
 
   const handleMouseLeave = useCallback(() => {
     setIsDragging(false);
     setHoveredRegion(null);
+    // End panning when mouse leaves the diagram
+    setTimeout(() => {
+      setIsPanning(false);
+    }, 50);
   }, []);
 
 
@@ -910,7 +934,7 @@ const ArgandDiagram: React.FC<ArgandDiagramProps> = ({
         })()}
 
         {/* Render plot regions from expressions first (background) */}
-        {plotData?.regions.map((region, index) =>
+        {(isPanning ? cachedPlotRegions.current : plotData?.regions || []).map((region, index) =>
           renderPlotRegion(region, index)
         )}
 
