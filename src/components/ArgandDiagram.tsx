@@ -56,6 +56,26 @@ const ArgandDiagram: React.FC<ArgandDiagramProps> = ({
     zoomLevel: 0.66
   };
 
+  // Format tick labels to handle floating point precision gracefully
+  const formatTickLabel = useCallback((value: number): string => {
+    // Handle very small numbers with scientific notation if needed
+    if (Math.abs(value) < 0.0001 && value !== 0) {
+      return value.toExponential(2);
+    }
+
+    // For regular numbers, use appropriate precision
+    // If the number is very close to an integer, show as integer
+    const tolerance = 1e-10;
+    if (Math.abs(value - Math.round(value)) < tolerance) {
+      return Math.round(value).toString();
+    }
+
+    // For other numbers, show enough precision to distinguish them
+    // but avoid floating point artifacts
+    const precision = Math.max(0, -Math.floor(Math.log10(Math.abs(value - Math.round(value)))));
+    return parseFloat(value.toPrecision(Math.min(15, Math.max(2, precision + 2)))).toString();
+  }, []);
+
   // Wrapper to call onViewportChange when viewport changes
   const updateViewport = useCallback((newViewport: ViewportState) => {
     if (onViewportChange) {
@@ -265,12 +285,12 @@ const ArgandDiagram: React.FC<ArgandDiagramProps> = ({
       case '+':
       case '=':
         // Zoom in
-        newViewport.zoomLevel = Math.min(50, currentZoom * 1.2);
+        newViewport.zoomLevel = currentZoom * 1.2;
         break;
       case '-':
       case '_':
         // Zoom out
-        newViewport.zoomLevel = Math.max(0.1, currentZoom / 1.2);
+        newViewport.zoomLevel = currentZoom / 1.2;
         break;
       default:
         return; // Don't prevent default for unhandled keys
@@ -295,29 +315,33 @@ const ArgandDiagram: React.FC<ArgandDiagramProps> = ({
       e.preventDefault();
 
       const scaleFactor = e.deltaY > 0 ? 0.9 : 1.1;
-      const newZoomLevel = Math.max(0.1, Math.min(50, currentViewport.zoomLevel * scaleFactor));
+      const newZoomLevel = currentViewport.zoomLevel * scaleFactor;
 
       if (newZoomLevel === currentViewport.zoomLevel) return;
 
-      // Get mouse position in math coordinates before zoom
-      const mouseScreenCoords = { x: e.clientX, y: e.clientY };
+      // Get mouse position relative to SVG
       const svgRect = svg.getBoundingClientRect();
       if (!svgRect) return;
 
-      const mouseX = mouseScreenCoords.x - svgRect.left;
-      const mouseY = mouseScreenCoords.y - svgRect.top;
-      const mathCoords = toMathCoords(mouseX, mouseY);
+      const mouseX = e.clientX - svgRect.left;
+      const mouseY = e.clientY - svgRect.top;
 
-      // Update zoom
-      const newViewport = { ...currentViewport, zoomLevel: newZoomLevel };
+      // Method 1: Keep the point under the mouse fixed in world coordinates
+      // 1. Convert mouse position to world coordinates BEFORE zoom
+      const worldBeforeZoomX = (mouseX - center.x) / scale + currentViewport.offsetX;
+      const worldBeforeZoomY = -(mouseY - center.y) / scale + currentViewport.offsetY;
 
-      // Calculate new scale
+      // 2. Calculate new viewport offset so the same world point is under the mouse AFTER zoom
       const newScale = baseScale * newZoomLevel;
+      const newOffsetX = worldBeforeZoomX - (mouseX - center.x) / newScale;
+      const newOffsetY = worldBeforeZoomY + (mouseY - center.y) / newScale;
 
-      // Adjust offset to zoom toward mouse position
-      const zoomFactor = newZoomLevel / currentViewport.zoomLevel;
-      newViewport.offsetX = mathCoords.x - (mathCoords.x - currentViewport.offsetX) * zoomFactor;
-      newViewport.offsetY = mathCoords.y - (mathCoords.y - currentViewport.offsetY) * zoomFactor;
+      const newViewport = {
+        ...currentViewport,
+        offsetX: newOffsetX,
+        offsetY: newOffsetY,
+        zoomLevel: newZoomLevel
+      };
 
       updateViewport(newViewport);
     };
@@ -331,7 +355,7 @@ const ArgandDiagram: React.FC<ArgandDiagramProps> = ({
 
   // Helper functions for external control
   const resetView = useCallback(() => {
-    updateViewport({ offsetX: 0, offsetY: 0, zoomLevel: 3 });
+    updateViewport({ offsetX: 0, offsetY: 0, zoomLevel: 0.66 });
   }, []);
 
   const centerView = useCallback(() => {
@@ -342,12 +366,12 @@ const ArgandDiagram: React.FC<ArgandDiagramProps> = ({
   }, [currentViewport.zoomLevel, updateViewport]);
 
   const zoomIn = useCallback(() => {
-    const newViewport = { ...currentViewport, zoomLevel: Math.min(50, currentViewport.zoomLevel * 1.25) };
+    const newViewport = { ...currentViewport, zoomLevel: currentViewport.zoomLevel * 1.25 };
     updateViewport(newViewport);
   }, [currentViewport, updateViewport]);
 
   const zoomOut = useCallback(() => {
-    const newViewport = { ...currentViewport, zoomLevel: Math.max(0.1, currentViewport.zoomLevel * 0.8) };
+    const newViewport = { ...currentViewport, zoomLevel: currentViewport.zoomLevel * 0.8 };
     updateViewport(newViewport);
   }, [currentViewport, updateViewport]);
 
@@ -360,7 +384,20 @@ const ArgandDiagram: React.FC<ArgandDiagramProps> = ({
 
       // Convert to math coordinates
       const pixelsPerUnit = (width / range) * zoom;
-      const targetMathStep = targetScreenStep / pixelsPerUnit;
+      let targetMathStep = targetScreenStep / pixelsPerUnit;
+
+      // Prevent step size from becoming too small at high zoom levels
+      // This ensures labels remain visible and readable
+      const minStepSize = 0.01;
+      const maxStepSize = 1000;
+
+      // Clamp targetMathStep to reasonable bounds
+      targetMathStep = Math.max(minStepSize, Math.min(maxStepSize, targetMathStep));
+
+      // Handle very small numbers to prevent log10 of 0 or negative
+      if (targetMathStep <= 0) {
+        return minStepSize;
+      }
 
       // Calculate the magnitude (power of 10)
       const magnitude = Math.pow(10, Math.floor(Math.log10(targetMathStep)));
@@ -380,7 +417,10 @@ const ArgandDiagram: React.FC<ArgandDiagramProps> = ({
         niceFraction = 10;
       }
 
-      return niceFraction * magnitude;
+      const finalStepSize = niceFraction * magnitude;
+
+      // Final clamp to ensure we don't get extreme values
+      return Math.max(minStepSize, Math.min(maxStepSize, finalStepSize));
     };
     return calculateOptimalStepSize(tickCrowding || 3, currentViewport.zoomLevel);
   }, [tickCrowding, currentViewport.zoomLevel, width, range]);
@@ -396,37 +436,41 @@ const ArgandDiagram: React.FC<ArgandDiagramProps> = ({
     
     // Vertical grid lines (constant x)
     for (let x = Math.ceil(topLeft.x / stepSize) * stepSize; x <= bottomRight.x; x += stepSize) {
-      const screen = toScreenCoords(x, 0);
-      if (screen.x >= 0 && screen.x <= width) {
-        lines.push(
-          <line
-            key={`vline-${x}`}
-            x1={screen.x}
-            y1={0}
-            x2={screen.x}
-            y2={height}
-            className="diagram-grid-line"
-            strokeWidth="1"
-          />
-        );
+      if (Math.abs(x) > stepSize * 0.1) { // Skip origin line
+        const screen = toScreenCoords(x, 0);
+        if (screen.x >= 0 && screen.x <= width) {
+          lines.push(
+            <line
+              key={`vline-${x}`}
+              x1={screen.x}
+              y1={0}
+              x2={screen.x}
+              y2={height}
+              className="diagram-grid-line"
+              strokeWidth="1"
+            />
+          );
+        }
       }
     }
 
     // Horizontal grid lines (constant y)
     for (let y = Math.ceil(bottomRight.y / stepSize) * stepSize; y <= topLeft.y; y += stepSize) {
-      const screen = toScreenCoords(0, y);
-      if (screen.y >= 0 && screen.y <= height) {
-        lines.push(
-          <line
-            key={`hline-${y}`}
-            x1={0}
-            y1={screen.y}
-            x2={width}
-            y2={screen.y}
-            className="diagram-grid-line"
-            strokeWidth="1"
-          />
-        );
+      if (Math.abs(y) > stepSize * 0.1) { // Skip origin line
+        const screen = toScreenCoords(0, y);
+        if (screen.y >= 0 && screen.y <= height) {
+          lines.push(
+            <line
+              key={`hline-${y}`}
+              x1={0}
+              y1={screen.y}
+              x2={width}
+              y2={screen.y}
+              className="diagram-grid-line"
+              strokeWidth="1"
+            />
+          );
+        }
       }
     }
 
@@ -890,7 +934,7 @@ const ArgandDiagram: React.FC<ArgandDiagramProps> = ({
 
           // X-axis labels (real numbers)
           for (let x = Math.ceil(topLeft.x / stepSize) * stepSize; x <= bottomRight.x; x += stepSize) {
-            if (x !== 0) {
+            if (Math.abs(x) > stepSize * 0.1) { // Skip origin label
               const screen = toScreenCoords(x, 0);
               if (screen.x >= 10 && screen.x <= width - 10) {
                 labels.push(
@@ -902,7 +946,7 @@ const ArgandDiagram: React.FC<ArgandDiagramProps> = ({
                     className="diagram-text-primary"
                     textAnchor="middle"
                   >
-                    {x % 1 === 0 ? x.toFixed(0) : x.toFixed(1)}
+                    {formatTickLabel(x)}
                   </text>
                 );
               }
@@ -911,7 +955,7 @@ const ArgandDiagram: React.FC<ArgandDiagramProps> = ({
 
           // Y-axis labels (imaginary numbers)
           for (let y = Math.ceil(bottomRight.y / stepSize) * stepSize; y <= topLeft.y; y += stepSize) {
-            if (y !== 0) {
+            if (Math.abs(y) > stepSize * 0.1) { // Skip origin label
               const screen = toScreenCoords(0, y);
               if (screen.y >= 10 && screen.y <= height - 10) {
                 labels.push(
@@ -923,7 +967,7 @@ const ArgandDiagram: React.FC<ArgandDiagramProps> = ({
                     className="diagram-text-primary"
                     textAnchor="end"
                   >
-                    {y % 1 === 0 ? y.toFixed(0) : y.toFixed(1)}
+                    {formatTickLabel(y)}
                   </text>
                 );
               }
