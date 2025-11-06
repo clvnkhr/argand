@@ -377,6 +377,24 @@ export class HybridPlotter {
       }
     }
 
+    // Check if this is of the form |z - a|^2 = r^2 (squared circle)
+    if (this.isSquaredModulusConstantEquality(ast)) {
+      const result = this.extractSquaredModulusConstant(ast);
+      if (result) {
+        // This is |z - a|^2 = r^2, which represents a circle with radius r
+        return this.generateCircle(result.center, result.radius);
+      }
+    }
+
+    // Check if this is of the form |z|^2 = r^2 (circle centered at origin)
+    if (this.isSquaredModulusOriginEquality(ast)) {
+      const result = this.extractSquaredModulusOriginConstant(ast);
+      if (result) {
+        // This is |z|^2 = r^2, which represents a circle centered at origin with radius r
+        return this.generateCircle({ x: 0, y: 0 }, result.radius);
+      }
+    }
+
     // Check if this is of the form |z - a| = k|z - b| (Apollonian circle)
     if (this.isWeightedModulusEquality(ast)) {
       const result = this.extractWeightedModulusConstants(ast);
@@ -541,7 +559,13 @@ export class HybridPlotter {
 
   private generateCircle(center: Point, radius: number): Point[][] {
     const points: Point[] = [];
-    const numPoints = 100;
+    // Perfect circles only need a reasonable number of points for smooth rendering
+    // Using adaptive point count based on radius size
+    const minPoints = 12;
+    const maxPoints = 60;
+    const pointsPerUnit = 4; // 4 points per unit of radius
+
+    const numPoints = Math.max(minPoints, Math.min(maxPoints, Math.ceil(radius * pointsPerUnit * 2)));
 
     for (let i = 0; i < numPoints; i++) {
       const angle = (i / numPoints) * 2 * Math.PI;
@@ -634,7 +658,6 @@ export class HybridPlotter {
 
   private generateApollonianCircle(p1: Point, p2: Point, k: number): Point[][] {
     const points: Point[] = [];
-    const numPoints = 200;
 
     if (Math.abs(k - 1) < 0.001) {
       // k = 1, this is a perpendicular bisector (line)
@@ -658,6 +681,12 @@ export class HybridPlotter {
     const dy = p1.y - p2.y;
     const distance = Math.sqrt(dx * dx + dy * dy);
     const radius = (k * distance) / Math.abs(denominator);
+
+    // Use adaptive point count for perfect circles
+    const minPoints = 12;
+    const maxPoints = 60;
+    const pointsPerUnit = 4; // 4 points per unit of radius
+    const numPoints = Math.max(minPoints, Math.min(maxPoints, Math.ceil(radius * pointsPerUnit * 2)));
 
     // Generate circle points
     for (let i = 0; i < numPoints; i++) {
@@ -1864,5 +1893,122 @@ export class HybridPlotter {
     }
 
     return curves.length > 0 ? curves : null;
+  }
+
+  // Check if this is of the form |z - a|^2 = constant^2
+  private isSquaredModulusConstantEquality(ast: ASTNode): boolean {
+    if (ast.type !== 'binary' || ast.operator !== '=') return false;
+
+    // Check left side is modulus squared
+    if (!this.isModulusSquared(ast.left)) return false;
+
+    // Check right side is a number
+    if (ast.right?.type !== 'number') return false;
+
+    return true;
+  }
+
+  // Check if expression represents |something|^2
+  private isModulusSquared(node: ASTNode): boolean {
+    if (node.type === 'binary' && node.operator === '^') {
+      const left = node.left;
+      const right = node.right;
+
+      // Check if left side is modulus and right side is 2
+      if (this.isModulusNode(left) && right.type === 'number' && right.value === 2) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // Check if this is a modulus node
+  private isModulusNode(node: ASTNode): boolean {
+    return node.type === 'modulus';
+  }
+
+  // Extract center and radius from |z - a|^2 = r^2
+  private extractSquaredModulusConstant(ast: ASTNode): { center: Point; radius: number } | null {
+    if (ast.type !== 'binary' || ast.operator !== '=') return null;
+
+    const left = ast.left;
+    const right = ast.right;
+
+    if (!this.isModulusSquared(left) || right.type !== 'number') return null;
+
+    const radiusSquared = right.value as number;
+    const radius = Math.sqrt(Math.abs(radiusSquared));
+
+    // Extract center from modulus
+    const center = this.extractCenterFromModulusSquared(left);
+    if (center) {
+      return { center, radius };
+    }
+
+    return null;
+  }
+
+  // Extract center from |z - a|^2
+  private extractCenterFromModulusSquared(node: ASTNode): Point | null {
+    if (!this.isModulusSquared(node)) return null;
+
+    // Get the modulus node (left side of ^)
+    const modulusNode = (node as any).left;
+    if (modulusNode.type === 'modulus') {
+      return this.extractCenterFromModulus(modulusNode);
+    }
+
+    return null;
+  }
+
+  // Check if this is of the form |z|^2 = constant^2
+  private isSquaredModulusOriginEquality(ast: ASTNode): boolean {
+    if (ast.type !== 'binary' || ast.operator !== '=') return false;
+
+    // Check left side is |z|^2
+    if (!this.isModulusOfZSquared(ast.left)) return false;
+
+    // Check right side is a number
+    if (ast.right?.type !== 'number') return false;
+
+    return true;
+  }
+
+  // Check if expression is |z|^2
+  private isModulusOfZSquared(node: ASTNode): boolean {
+    if (node.type === 'binary' && node.operator === '^') {
+      const left = node.left;
+      const right = node.right;
+
+      // Check if left side is |z| and right side is 2
+      if (this.isModulusOfZ(left) && right.type === 'number' && right.value === 2) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // Check if expression is |z|
+  private isModulusOfZ(node: ASTNode): boolean {
+    if (node.type === 'modulus') {
+      const operand = node.operand;
+      return operand && operand.type === 'variable' && operand.value === 'z';
+    }
+    return false;
+  }
+
+  // Extract radius from |z|^2 = r^2
+  private extractSquaredModulusOriginConstant(ast: ASTNode): { radius: number } | null {
+    if (ast.type !== 'binary' || ast.operator !== '=') return null;
+
+    const left = ast.left;
+    const right = ast.right;
+
+    if (!this.isModulusOfZSquared(left) || right.type !== 'number') return null;
+
+    const radiusSquared = right.value as number;
+    const radius = Math.sqrt(Math.abs(radiusSquared));
+
+    return { radius };
   }
 }
