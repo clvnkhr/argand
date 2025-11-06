@@ -763,7 +763,8 @@ export class HybridPlotter {
 
   private generateStraightLine(lineInfo: { type: 'horizontal' | 'vertical'; value: number }): Point[][] {
     const points: Point[] = [];
-    const numPoints = 100;
+    // Straight lines only need 5 points: endpoints and 3 intermediate points
+    const numPoints = 5;
 
     // Use viewport range instead of fixed config range
     const viewportRange = this.getViewportRange();
@@ -1541,26 +1542,30 @@ export class HybridPlotter {
 
     if (!expression) return points;
 
-    // Pattern 1: |Re(z)| = constant -> vertical lines
-    if (expression.includes('|Re(z)|') || expression.includes('abs(Re(z))')) {
+    // Pattern 1: |Re(z)| = constant -> vertical lines (exact match only, not nested functions)
+    if (/\|Re\(z\)\|=/.test(expression) || /abs\(Re\(z\)\)=/.test(expression)) {
       const match = expression.match(/=\s*([+-]?\d*\.?\d+)/);
       if (match) {
         const value = parseFloat(match[1]);
-        // Generate balanced points along vertical lines - moderate coverage with legacy continuity
-        for (let y = viewportRange.minY; y <= viewportRange.maxY; y += (viewportRange.maxY - viewportRange.minY) / 12) {
+        // Generate only 5 points per line for straight lines
+        const numPoints = 5;
+        for (let i = 0; i < numPoints; i++) {
+          const y = (i / (numPoints - 1)) * (viewportRange.maxY - viewportRange.minY) + viewportRange.minY;
           points.push({ x: value, y });
           points.push({ x: -value, y }); // Both positive and negative
         }
       }
     }
 
-    // Pattern 2: |Im(z)| = constant -> horizontal lines
-    if (expression.includes('|Im(z)|') || expression.includes('abs(Im(z))')) {
+    // Pattern 2: |Im(z)| = constant -> horizontal lines (exact match only, not nested functions)
+    if (/\|Im\(z\)\|=/.test(expression) || /abs\(Im\(z\)\)=/.test(expression)) {
       const match = expression.match(/=\s*([+-]?\d*\.?\d+)/);
       if (match) {
         const value = parseFloat(match[1]);
-        // Generate balanced points along horizontal lines - moderate coverage with legacy continuity
-        for (let x = viewportRange.minX; x <= viewportRange.maxX; x += (viewportRange.maxX - viewportRange.minX) / 12) {
+        // Generate only 5 points per line for straight lines
+        const numPoints = 5;
+        for (let i = 0; i < numPoints; i++) {
+          const x = (i / (numPoints - 1)) * (viewportRange.maxX - viewportRange.minX) + viewportRange.minX;
           points.push({ x, y: value });
           points.push({ x, y: -value }); // Both positive and negative
         }
@@ -1572,17 +1577,19 @@ export class HybridPlotter {
       const match = expression.match(/=\s*([+-]?\d*\.?\d+)/);
       if (match) {
         const value = parseFloat(match[1]);
-        // Generate points along diagonal line x + y = value and x + y = -value
-        const step = Math.max(viewportRange.range / 25, 0.15); // Moderate density
+        // Generate only 5 points per line for straight lines
+        const numPoints = 5;
 
         // Line 1: x + y = value (y = value - x)
-        for (let x = viewportRange.minX; x <= viewportRange.maxX; x += step) {
+        for (let i = 0; i < numPoints; i++) {
+          const x = (i / (numPoints - 1)) * (viewportRange.maxX - viewportRange.minX) + viewportRange.minX;
           const y = value - x;
           points.push({ x, y });
         }
 
         // Line 2: x + y = -value (y = -value - x)
-        for (let x = viewportRange.minX; x <= viewportRange.maxX; x += step) {
+        for (let i = 0; i < numPoints; i++) {
+          const x = (i / (numPoints - 1)) * (viewportRange.maxX - viewportRange.minX) + viewportRange.minX;
           const y = -value - x;
           points.push({ x, y });
         }
@@ -1594,19 +1601,53 @@ export class HybridPlotter {
       const match = expression.match(/=\s*([+-]?\d*\.?\d+)/);
       if (match) {
         const value = parseFloat(match[1]);
-        // Generate points along diagonal line x - y = value and x - y = -value
-        const step = Math.max(viewportRange.range / 25, 0.15); // Moderate density
+        // Generate only 5 points per line for straight lines
+        const numPoints = 5;
 
         // Line 1: x - y = value (y = x - value)
-        for (let x = viewportRange.minX; x <= viewportRange.maxX; x += step) {
+        for (let i = 0; i < numPoints; i++) {
+          const x = (i / (numPoints - 1)) * (viewportRange.maxX - viewportRange.minX) + viewportRange.minX;
           const y = x - value;
           points.push({ x, y });
         }
 
         // Line 2: x - y = -value (y = x + value)
-        for (let x = viewportRange.minX; x <= viewportRange.maxX; x += step) {
+        for (let i = 0; i < numPoints; i++) {
+          const x = (i / (numPoints - 1)) * (viewportRange.maxX - viewportRange.minX) + viewportRange.minX;
           const y = x + value;
           points.push({ x, y });
+        }
+      }
+    }
+
+    // Pattern 2.7: |Re(f(z))| = constant where f(z) is not just z -> complex curves
+    if ((/\|Re\([^)]+\)\|=/.test(expression) || /abs\(Re\([^)]+\)\)=/.test(expression)) && !/\|Re\(z\)\|=/.test(expression) && !/abs\(Re\(z\)\)=/.test(expression)) {
+      const match = expression.match(/=\s*([+-]?\d*\.?\d+)/);
+      if (match) {
+        const value = parseFloat(match[1]);
+        // Generate points in a grid pattern for numerical solving
+        // This will be handled by the generic boundary tracing later
+        const step = Math.max(viewportRange.range / 30, 0.2);
+        for (let x = viewportRange.minX; x <= viewportRange.maxX; x += step) {
+          for (let y = viewportRange.minY; y <= viewportRange.maxY; y += step) {
+            points.push({ x, y });
+          }
+        }
+      }
+    }
+
+    // Pattern 2.8: |Im(f(z))| = constant where f(z) is not just z -> complex curves
+    if ((/\|Im\([^)]+\)\|=/.test(expression) || /abs\(Im\([^)]+\)\)=/.test(expression)) && !/\|Im\(z\)\|=/.test(expression) && !/abs\(Im\(z\)\)=/.test(expression)) {
+      const match = expression.match(/=\s*([+-]?\d*\.?\d+)/);
+      if (match) {
+        const value = parseFloat(match[1]);
+        // Generate points in a grid pattern for numerical solving
+        // This will be handled by the generic boundary tracing later
+        const step = Math.max(viewportRange.range / 30, 0.2);
+        for (let x = viewportRange.minX; x <= viewportRange.maxX; x += step) {
+          for (let y = viewportRange.minY; y <= viewportRange.maxY; y += step) {
+            points.push({ x, y });
+          }
         }
       }
     }
@@ -1629,14 +1670,18 @@ export class HybridPlotter {
       const match = expression.match(/=\s*([+-]?\d*\.?\d+)/);
       if (match) {
         const value = parseFloat(match[1]);
+        // Generate only 5 points for straight lines
+        const numPoints = 5;
         if (expression.includes('Re(z)')) {
           // Vertical line
-          for (let y = viewportRange.minY; y <= viewportRange.maxY; y += (viewportRange.maxY - viewportRange.minY) / 5) {
+          for (let i = 0; i < numPoints; i++) {
+            const y = (i / (numPoints - 1)) * (viewportRange.maxY - viewportRange.minY) + viewportRange.minY;
             points.push({ x: value, y });
           }
         } else {
           // Horizontal line
-          for (let x = viewportRange.minX; x <= viewportRange.maxX; x += (viewportRange.maxX - viewportRange.minX) / 5) {
+          for (let i = 0; i < numPoints; i++) {
+            const x = (i / (numPoints - 1)) * (viewportRange.maxX - viewportRange.minX) + viewportRange.minX;
             points.push({ x, y: value });
           }
         }
@@ -1657,9 +1702,11 @@ export class HybridPlotter {
         const actualB = op === '-' ? -b : b;
 
         // Generate points along the line a*x + b*y = c
-        const step = Math.max(viewportRange.range / 25, 0.15);
+        // Generate only 5 points for straight lines
+        const numPoints = 5;
 
-        for (let x = viewportRange.minX; x <= viewportRange.maxX; x += step) {
+        for (let i = 0; i < numPoints; i++) {
+          const x = (i / (numPoints - 1)) * (viewportRange.maxX - viewportRange.minX) + viewportRange.minX;
           if (actualB !== 0) {
             const y = (c - a * x) / actualB;
             points.push({ x, y });
@@ -1668,7 +1715,8 @@ export class HybridPlotter {
 
         // Also generate points solving for x if b is small
         if (Math.abs(actualB) < 0.1 && a !== 0) {
-          for (let y = viewportRange.minY; y <= viewportRange.maxY; y += step) {
+          for (let i = 0; i < numPoints; i++) {
+            const y = (i / (numPoints - 1)) * (viewportRange.maxY - viewportRange.minY) + viewportRange.minY;
             const x = (c - actualB * y) / a;
             points.push({ x, y });
           }
@@ -1746,7 +1794,7 @@ export class HybridPlotter {
     return Math.sqrt(z.real * z.real + z.imaginary * z.imaginary);
   }
 
-  // Check if this is |Re(z)| = constant or |Im(z)| = constant
+  // Check if this is |Re(z)| = constant or |Im(z)| = constant (exact matches only)
   private isRealImagModulusEquality(ast: ASTNode): boolean {
     if (ast.type !== 'binary' || ast.operator !== '=') return false;
 
@@ -1756,11 +1804,18 @@ export class HybridPlotter {
     // Check right side is a number
     if (ast.right?.type !== 'number') return false;
 
-    // Check modulus operand is Re(z) or Im(z)
+    // Check modulus operand is Re(z) or Im(z) exactly (not nested functions)
     const operand = ast.left.operand;
     if (operand?.type !== 'function') return false;
 
-    return operand.value === 'Re' || operand.value === 'Im';
+    // Must be Re or Im function
+    if (operand.value !== 'Re' && operand.value !== 'Im') return false;
+
+    // Must have exactly one argument and that argument must be the variable z
+    if (!operand.args || operand.args.length !== 1) return false;
+
+    const arg = operand.args[0];
+    return arg.type === 'variable' && arg.value === 'z';
   }
 
   // Generate line points for |Re(z)| = constant or |Im(z)| = constant
@@ -1774,7 +1829,8 @@ export class HybridPlotter {
     const functionName = typeof ast.left.operand.value === 'string' ? ast.left.operand.value : ast.left.operand.value.toString();
 
     const viewportRange = this.getViewportRange();
-    const numPoints = 100;
+    // Straight lines only need 5 points: endpoints and 3 intermediate points
+    const numPoints = 5;
     const curves: Point[][] = [];
 
     if (functionName === 'Re') {
@@ -1784,10 +1840,9 @@ export class HybridPlotter {
         const points: Point[] = [];
         const yMin = viewportRange.minY;
         const yMax = viewportRange.maxY;
-        const step = (yMax - yMin) / numPoints;
 
-        for (let i = 0; i <= numPoints; i++) {
-          const y = yMin + i * step;
+        for (let i = 0; i < numPoints; i++) {
+          const y = (i / (numPoints - 1)) * (yMax - yMin) + yMin;
           points.push({ x, y });
         }
         curves.push(points);
@@ -1799,10 +1854,9 @@ export class HybridPlotter {
         const points: Point[] = [];
         const xMin = viewportRange.minX;
         const xMax = viewportRange.maxX;
-        const step = (xMax - xMin) / numPoints;
 
-        for (let i = 0; i <= numPoints; i++) {
-          const x = xMin + i * step;
+        for (let i = 0; i < numPoints; i++) {
+          const x = (i / (numPoints - 1)) * (xMax - xMin) + xMin;
           points.push({ x, y });
         }
         curves.push(points);

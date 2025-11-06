@@ -304,7 +304,70 @@ export class ExpressionParser {
       }
     }
 
-    return tokens;
+    return this.insertImplicitMultiplication(tokens);
+  }
+
+  // Insert implicit multiplication operators between appropriate tokens
+  private insertImplicitMultiplication(tokens: Token[]): Token[] {
+    if (tokens.length === 0) return tokens;
+
+    const result: Token[] = [tokens[0]];
+
+    for (let i = 1; i < tokens.length; i++) {
+      const prev = tokens[i - 1];
+      const curr = tokens[i];
+
+      // Check if we need to insert implicit multiplication between prev and curr
+      if (this.needsImplicitMultiplication(prev, curr)) {
+        result.push({
+          type: 'OPERATOR',
+          value: '*',
+          position: prev.position + 1
+        });
+      }
+
+      result.push(curr);
+    }
+
+    return result;
+  }
+
+  // Determine if implicit multiplication is needed between two tokens
+  private needsImplicitMultiplication(prev: Token, curr: Token): boolean {
+    // Cases where implicit multiplication should be inserted:
+
+    // 1. Number/Imaginary followed by Variable/ParenOpen (but NOT Function)
+    if ((prev.type === 'NUMBER' || prev.type === 'IMAGINARY') &&
+        (curr.type === 'VARIABLE' || curr.type === 'PARENOPEN')) {
+      return true;
+    }
+
+    // 2. Variable/Closing Parenthesis followed by Variable/ParenOpen/Number (but NOT Function)
+    if ((prev.type === 'VARIABLE' || prev.type === 'PARENCLOSE') &&
+        (curr.type === 'VARIABLE' || curr.type === 'PARENOPEN' || curr.type === 'NUMBER')) {
+      return true;
+    }
+
+    // 3. Closing Parenthesis/Modulus followed by Variable/ParenOpen/Number (but NOT Function)
+    if ((prev.type === 'PARENCLOSE' || (prev.type === 'MODULUS' && prev.position % 2 === 1)) &&
+        (curr.type === 'VARIABLE' || curr.type === 'PARENOPEN' || curr.type === 'NUMBER')) {
+      return true;
+    }
+
+    // 4. Number/Imaginary followed by Function (like 2Re(z))
+    if ((prev.type === 'NUMBER' || prev.type === 'IMAGINARY') && curr.type === 'FUNCTION') {
+      return true;
+    }
+
+    // 5. Variable/Closing Parenthesis followed by Function (like xRe(z) or (a+b)Re(z))
+    if ((prev.type === 'VARIABLE' || prev.type === 'PARENCLOSE') && curr.type === 'FUNCTION') {
+      return true;
+    }
+
+    // IMPORTANT: Do NOT insert multiplication between Function and PARENOPEN
+    // This is the standard function call syntax, not multiplication
+
+    return false;
   }
 
   // Parse tokens into AST
