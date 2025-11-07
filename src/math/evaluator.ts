@@ -296,7 +296,7 @@ export class ExpressionEvaluator {
 
       case 'abs': {
         if (args.length !== 1) throw new Error('abs expects 1 argument');
-        const modulus = complexModulus(args[0] as ComplexNumber);
+        const modulus = complexModulus(this.toComplex(args[0]));
         return {
           value: modulus,
           isValid: true
@@ -305,7 +305,7 @@ export class ExpressionEvaluator {
 
       case 'arg': {
         if (args.length !== 1) throw new Error('arg expects 1 argument');
-        const zArg = args[0] as ComplexNumber;
+        const zArg = this.toComplex(args[0]);
         const argument = Math.atan2(zArg.imaginary, zArg.real);
         return {
           value: argument,
@@ -315,56 +315,63 @@ export class ExpressionEvaluator {
 
       case 'conj': {
         if (args.length !== 1) throw new Error('conj expects 1 argument');
+        const result = conjComplex(this.toComplex(args[0]));
         return {
-          value: conjComplex(args[0] as ComplexNumber),
+          value: result,
           isValid: true
         };
       }
 
       case 'exp': {
         if (args.length !== 1) throw new Error('exp expects 1 argument');
+        const result = expComplex(this.toComplex(args[0]));
         return {
-          value: expComplex(args[0] as ComplexNumber),
+          value: result,
           isValid: true
         };
       }
 
       case 'log': {
         if (args.length !== 1) throw new Error('log expects 1 argument');
+        const result = logComplex(this.toComplex(args[0]));
         return {
-          value: logComplex(args[0] as ComplexNumber),
+          value: result,
           isValid: true
         };
       }
 
       case 'sqrt': {
         if (args.length !== 1) throw new Error('sqrt expects 1 argument');
+        const result = sqrtComplex(this.toComplex(args[0]));
         return {
-          value: sqrtComplex(args[0] as ComplexNumber),
+          value: result,
           isValid: true
         };
       }
 
       case 'sin': {
         if (args.length !== 1) throw new Error('sin expects 1 argument');
+        const result = sinComplex(this.toComplex(args[0]));
         return {
-          value: sinComplex(args[0] as ComplexNumber),
+          value: result,
           isValid: true
         };
       }
 
       case 'cos': {
         if (args.length !== 1) throw new Error('cos expects 1 argument');
+        const result = cosComplex(this.toComplex(args[0]));
         return {
-          value: cosComplex(args[0] as ComplexNumber),
+          value: result,
           isValid: true
         };
       }
 
       case 'tan': {
         if (args.length !== 1) throw new Error('tan expects 1 argument');
+        const result = tanComplex(this.toComplex(args[0]));
         return {
-          value: tanComplex(args[0] as ComplexNumber),
+          value: result,
           isValid: true
         };
       }
