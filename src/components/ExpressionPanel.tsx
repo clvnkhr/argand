@@ -253,8 +253,8 @@ export const ExpressionPanel: React.FC<ExpressionPanelProps> = ({
     <div className="h-full flex flex-col expression-panel border-l">
       {/* Fixed header */}
       <div className="px-4 py-3 border-b flex items-center justify-between w-full">
-        <h3 className="text-sm font-semibold expression-label flex-shrink-0">Expressions</h3>
-        <div style={{ display: 'flex', gap: '4px' }}>
+        <div style={{ display: 'flex', gap: '4px', padding: '8px 2px' }}>
+          <div className="text-sm font-semibold expression-label flex-shrink-0">Expressions</div>
           <button
             onClick={() => onShowAllLabelsChange?.(!showAllLabels)}
             className={`w-6 h-6 flex items-center justify-center rounded border transition-all duration-200 expression-item text-xs expression-label flex-shrink-0 ${showAllLabels
@@ -279,7 +279,7 @@ export const ExpressionPanel: React.FC<ExpressionPanelProps> = ({
           >
             {isCollapsed ? '→' : '←'}
           </button>
-                  </div>
+        </div>
       </div>
 
       {/* Scrollable content */}
