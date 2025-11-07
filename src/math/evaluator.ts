@@ -87,6 +87,22 @@ export class ExpressionEvaluator {
             };
           }
 
+          // Handle x as alias for Re(z)
+          if (node.value === 'x' && z) {
+            return {
+              value: z.real,
+              isValid: true
+            };
+          }
+
+          // Handle y as alias for Im(z)
+          if (node.value === 'y' && z) {
+            return {
+              value: z.imaginary,
+              isValid: true
+            };
+          }
+
           // Handle the imaginary unit i
           if (node.value === 'i') {
             return {

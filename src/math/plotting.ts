@@ -737,21 +737,29 @@ export class HybridPlotter {
   }
 
   private isImaginaryPart(node: ASTNode): boolean {
-    // Check if this is Im(z)
+    // Check if this is Im(z) or y (alias for Im(z))
     if (node.type === 'function' && node.value === 'Im') {
       if (node.args && node.args.length === 1 && node.args[0].type === 'variable') {
         return true;
       }
     }
+    // Check if this is just variable y (alias for Im(z))
+    if (node.type === 'variable' && node.value === 'y') {
+      return true;
+    }
     return false;
   }
 
   private isRealPart(node: ASTNode): boolean {
-    // Check if this is Re(z)
+    // Check if this is Re(z) or x (alias for Re(z))
     if (node.type === 'function' && node.value === 'Re') {
       if (node.args && node.args.length === 1 && node.args[0].type === 'variable') {
         return true;
       }
+    }
+    // Check if this is just variable x (alias for Re(z))
+    if (node.type === 'variable' && node.value === 'x') {
+      return true;
     }
     return false;
   }
@@ -1571,8 +1579,8 @@ export class HybridPlotter {
 
     if (!expression) return points;
 
-    // Pattern 1: |Re(z)| = constant -> vertical lines (exact match only, not nested functions)
-    if (/\|Re\(z\)\|=/.test(expression) || /abs\(Re\(z\)\)=/.test(expression)) {
+    // Pattern 1: |Re(z)| = constant or |x| = constant -> vertical lines (exact match only, not nested functions)
+    if (/\|Re\(z\)\|=/.test(expression) || /abs\(Re\(z\)\)=/.test(expression) || /\|x\|=/.test(expression) || /abs\(x\)=/.test(expression)) {
       const match = expression.match(/=\s*([+-]?\d*\.?\d+)/);
       if (match) {
         const value = parseFloat(match[1]);
@@ -1586,8 +1594,8 @@ export class HybridPlotter {
       }
     }
 
-    // Pattern 2: |Im(z)| = constant -> horizontal lines (exact match only, not nested functions)
-    if (/\|Im\(z\)\|=/.test(expression) || /abs\(Im\(z\)\)=/.test(expression)) {
+    // Pattern 2: |Im(z)| = constant or |y| = constant -> horizontal lines (exact match only, not nested functions)
+    if (/\|Im\(z\)\|=/.test(expression) || /abs\(Im\(z\)\)=/.test(expression) || /\|y\|=/.test(expression) || /abs\(y\)=/.test(expression)) {
       const match = expression.match(/=\s*([+-]?\d*\.?\d+)/);
       if (match) {
         const value = parseFloat(match[1]);
@@ -1694,14 +1702,15 @@ export class HybridPlotter {
       }
     }
 
-    // Pattern 4: Re(z) = constant or Im(z) = constant
-    if (expression.includes('Re(z)') || expression.includes('Im(z)')) {
+    // Pattern 4: Re(z) = constant or Im(z) = constant, or x = constant or y = constant
+    if (expression.includes('Re(z)') || expression.includes('Im(z)') ||
+        /^x\s*=/.test(expression.trim()) || /^y\s*=/.test(expression.trim())) {
       const match = expression.match(/=\s*([+-]?\d*\.?\d+)/);
       if (match) {
         const value = parseFloat(match[1]);
         // Generate only 5 points for straight lines
         const numPoints = 5;
-        if (expression.includes('Re(z)')) {
+        if (expression.includes('Re(z)') || /^x\s*=/.test(expression.trim())) {
           // Vertical line
           for (let i = 0; i < numPoints; i++) {
             const y = (i / (numPoints - 1)) * (viewportRange.maxY - viewportRange.minY) + viewportRange.minY;

@@ -33,8 +33,6 @@ export const ExpressionPanel: React.FC<ExpressionPanelProps> = ({
   const [editingColor, setEditingColor] = useState('#4ecdc4');
   const [editingLineThickness, setEditingLineThickness] = useState(2);
   const [parseError, setParseError] = useState<string | null>(null);
-  const [showTemplateSuggestions, setShowTemplateSuggestions] = useState(false);
-  const [filteredSuggestions, setFilteredSuggestions] = useState<ExpressionTemplate[]>([]);
   const [isInternalClick, setIsInternalClick] = useState(false);
   const internalClickRef = useRef(false);
 
@@ -66,6 +64,7 @@ export const ExpressionPanel: React.FC<ExpressionPanelProps> = ({
     plotter.updateConfig(config);
   }, [config, plotter]);
 
+  
   // Helper functions for inline editing
   const startEdit = useCallback((index: number) => {
     console.log('DEBUG: startEdit called for index', index);
@@ -87,7 +86,6 @@ export const ExpressionPanel: React.FC<ExpressionPanelProps> = ({
     setEditingColor('#4ecdc4');
     setEditingLineThickness(2);
     setParseError(null);
-    setShowTemplateSuggestions(false);
   }, []);
 
   const saveEdit = useCallback(() => {
@@ -225,30 +223,9 @@ export const ExpressionPanel: React.FC<ExpressionPanelProps> = ({
   const handleExpressionChange = useCallback((value: string) => {
     setEditingExpression(value);
     setParseError(null);
-
-    if (value.trim()) {
-      // Get all templates for autocomplete
-      const allTemplates = expressionTemplates;
-      const filtered = allTemplates.filter(template =>
-        template.name.toLowerCase().includes(value.toLowerCase()) ||
-        template.template.toLowerCase().includes(value.toLowerCase()) ||
-        template.description.toLowerCase().includes(value.toLowerCase())
-      );
-      setFilteredSuggestions(filtered.slice(0, 5)); // Limit to 5 suggestions
-      setShowTemplateSuggestions(filtered.length > 0);
-    } else {
-      setFilteredSuggestions([]);
-      setShowTemplateSuggestions(false);
-    }
   }, []);
 
-  const applyTemplate = useCallback((template: ExpressionTemplate) => {
-    setEditingExpression(template.template);
-    setEditingLabel(template.name);
-    setShowTemplateSuggestions(false);
-    setFilteredSuggestions([]);
-  }, []);
-
+  
   return (
     <div className={`h-full flex flex-col expression-panel border-l ${isCollapsed ? 'controls-container collapsed' : ''}`}
          style={{ width: isCollapsed ? 0 : '320px', minWidth: isCollapsed ? 0 : '50px' }}>
@@ -405,22 +382,7 @@ export const ExpressionPanel: React.FC<ExpressionPanelProps> = ({
                     </div>
                   </div>
 
-                  {/* Template Suggestions */}
-                  {showTemplateSuggestions && filteredSuggestions.length > 0 && (
-                    <div className="border rounded-lg p-1 bg-white dark:bg-gray-800">
-                      {filteredSuggestions.map((template, index) => (
-                        <div
-                          key={index}
-                          onClick={() => applyTemplate(template)}
-                          className="px-1 py-1 text-xs hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer rounded"
-                        >
-                          <div className="font-medium">{template.name}</div>
-                          <div className="text-xs text-gray-500">{template.template}</div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                                  </div>
               ) : (
                 // Read Mode
                 <div
@@ -501,6 +463,17 @@ export const ExpressionPanel: React.FC<ExpressionPanelProps> = ({
               </div>
             </div>
         )}
+
+        {/* Templates */}
+        <div className="border-t pt-4">
+          <div className="space-y-1 max-h-64 overflow-y-auto">
+            {expressionTemplates.map((template, index) => (
+              <div key={index} className="text-xs p-1">
+                <div className="font-mono">{template.template}</div>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     </div>
   );
