@@ -103,37 +103,30 @@ function App() {
 
   return (
     <div className="App">
-      <main className="container">
-        <div className={`controls-container${isCollapsed ? ' collapsed' : ''}`}>
-          <ExpressionPanel
-            onExpressionsChange={handleExpressionsChange}
-            config={config}
-            onPlotGenerated={() => {}} // No-op since plot data is generated from expressions
-            isCollapsed={isCollapsed}
-            onToggleCollapse={() => setIsCollapsed(!isCollapsed)}
-            showAllLabels={showAllLabels}
-            onShowAllLabelsChange={setShowAllLabels}
-          />
-        </div>
-
-        <div className="diagram-container">
-          <ArgandDiagram
-            elements={[]}
-            plotData={plotData}
-            width={config.width}
-            height={config.height}
-            range={config.range}
-            config={config}
-            viewport={viewport}
-            onViewportChange={handleViewportChange}
-            tickCrowding={tickCrowding}
-            onTickCrowdingChange={setTickCrowding}
-            isControlsCollapsed={isCollapsed}
-            onToggleControls={() => setIsCollapsed(!isCollapsed)}
-            showAllLabels={showAllLabels}
-          />
-        </div>
-          </main>
+      <ExpressionPanel
+        onExpressionsChange={handleExpressionsChange}
+        config={config}
+        onPlotGenerated={() => {}} // No-op since plot data is generated from expressions
+        isCollapsed={isCollapsed}
+        onToggleCollapse={() => setIsCollapsed(!isCollapsed)}
+        showAllLabels={showAllLabels}
+        onShowAllLabelsChange={setShowAllLabels}
+      />
+      <ArgandDiagram
+        elements={[]}
+        plotData={plotData}
+        width={config.width}
+        height={config.height}
+        range={config.range}
+        config={config}
+        viewport={viewport}
+        onViewportChange={handleViewportChange}
+        tickCrowding={tickCrowding}
+        onTickCrowdingChange={setTickCrowding}
+        isControlsCollapsed={isCollapsed}
+        onToggleControls={() => setIsCollapsed(!isCollapsed)}
+        showAllLabels={showAllLabels}
+      />
     </div>
   );
 }

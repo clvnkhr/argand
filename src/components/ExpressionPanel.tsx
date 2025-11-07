@@ -250,41 +250,39 @@ export const ExpressionPanel: React.FC<ExpressionPanelProps> = ({
   }, []);
 
   return (
-    <div className="h-full flex flex-col expression-panel border-l">
+    <div className={`h-full flex flex-col expression-panel border-l ${isCollapsed ? 'controls-container collapsed' : ''}`}
+         style={{ width: isCollapsed ? 0 : '320px', minWidth: isCollapsed ? 0 : '50px' }}>
       {/* Fixed header */}
-      <div className="px-4 py-3 border-b flex items-center justify-between w-full">
-        <div style={{ display: 'flex', gap: '4px', padding: '8px 2px' }}>
-          <div className="text-sm font-semibold expression-label flex-shrink-0">Expressions</div>
-          <button
-            onClick={() => onShowAllLabelsChange?.(!showAllLabels)}
-            className={`w-6 h-6 flex items-center justify-center rounded border transition-all duration-200 expression-item text-xs expression-label flex-shrink-0 ${showAllLabels
-              ? 'border-solid bg-blue-100 border-blue-300'
-              : 'border-2 border-dashed hover:border-solid'
-              }`}
-            title={showAllLabels ? "Hide All Labels" : "Show All Labels"}
-          >
-            🏷️
-          </button>
-          <button
-            onClick={addNewExpression}
-            className="w-6 h-6 flex items-center justify-center rounded border-2 border-dashed hover:border-solid transition-all duration-200 expression-item text-sm expression-label flex-shrink-0"
-            title="Add Expression"
-          >
-            +
-          </button>
-          <button
-            onClick={onToggleCollapse}
-            className="w-6 h-6 flex items-center justify-center rounded border hover:border-solid transition-all duration-200 expression-item text-sm expression-label flex-shrink-0"
-            title={isCollapsed ? "Expand Panel" : "Collapse Panel"}
-          >
-            {isCollapsed ? '→' : '←'}
-          </button>
-        </div>
+      <div className="px-4 py-3 border-b flex items-center gap-2">
+        <span className="text-sm font-semibold expression-label">Expressions</span>
+        <button
+          onClick={() => onShowAllLabelsChange?.(!showAllLabels)}
+          className={`w-6 h-6 flex items-center justify-center rounded border transition-all duration-200 expression-item text-xs expression-label ${showAllLabels
+            ? 'border-solid bg-blue-100 border-blue-300'
+            : 'border-2 border-dashed hover:border-solid'
+            }`}
+          title={showAllLabels ? "Hide All Labels" : "Show All Labels"}
+        >
+          🏷️
+        </button>
+        <button
+          onClick={addNewExpression}
+          className="w-6 h-6 flex items-center justify-center rounded border-2 border-dashed hover:border-solid transition-all duration-200 expression-item text-sm expression-label"
+          title="Add Expression"
+        >
+          +
+        </button>
+        <button
+          onClick={onToggleCollapse}
+          className="w-6 h-6 flex items-center justify-center rounded border hover:border-solid transition-all duration-200 expression-item text-sm expression-label ml-auto"
+          title={isCollapsed ? "Expand Panel" : "Collapse Panel"}
+        >
+          {isCollapsed ? '→' : '←'}
+        </button>
       </div>
 
-      {/* Scrollable content */}
-      <div className="flex-1 overflow-y-auto">
-        <div className="p-2 space-y-2">
+      {/* Content */}
+      <div className="flex-1 overflow-y-auto p-2 space-y-2">
 
           {/* Error Display */}
           {parseError && (
@@ -502,8 +500,7 @@ export const ExpressionPanel: React.FC<ExpressionPanelProps> = ({
                 ))}
               </div>
             </div>
-          )}
-        </div>
+        )}
       </div>
     </div>
   );
