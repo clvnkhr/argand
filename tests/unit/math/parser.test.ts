@@ -1,6 +1,5 @@
 import { ExpressionParser } from '../../../src/math/parser';
-import { ComplexNumber } from '../../../src/types/complex';
-import { createComplex, expectComplexEqual } from '../../setup';
+import { createComplex } from '../../setup';
 
 describe('ExpressionParser', () => {
   let parser: ExpressionParser;

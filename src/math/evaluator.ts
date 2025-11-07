@@ -1,5 +1,19 @@
 import { ASTNode, EvaluationResult } from '../types/expressions';
 import { ComplexNumber } from '../types/complex';
+import {
+  addComplex,
+  subtractComplex,
+  multiplyComplex,
+  divideComplex,
+  expComplex,
+  logComplex,
+  sqrtComplex,
+  sinComplex,
+  cosComplex,
+  tanComplex,
+  conjComplex,
+  complexModulus
+} from '../utils/complex';
 
 export type ComplexOrNumber = ComplexNumber | number;
 
@@ -14,39 +28,7 @@ export class ExpressionEvaluator {
     return this.variables.get(name);
   }
 
-  // Complex number arithmetic operations
-  private addComplex(a: ComplexNumber, b: ComplexNumber): ComplexNumber {
-    return {
-      real: a.real + b.real,
-      imaginary: a.imaginary + b.imaginary
-    };
-  }
-
-  private subtractComplex(a: ComplexNumber, b: ComplexNumber): ComplexNumber {
-    return {
-      real: a.real - b.real,
-      imaginary: a.imaginary - b.imaginary
-    };
-  }
-
-  private multiplyComplex(a: ComplexNumber, b: ComplexNumber): ComplexNumber {
-    return {
-      real: a.real * b.real - a.imaginary * b.imaginary,
-      imaginary: a.real * b.imaginary + a.imaginary * b.real
-    };
-  }
-
-  private divideComplex(a: ComplexNumber, b: ComplexNumber): ComplexNumber {
-    const denominator = b.real * b.real + b.imaginary * b.imaginary;
-    if (denominator === 0) {
-      throw new Error('Division by zero');
-    }
-    return {
-      real: (a.real * b.real + a.imaginary * b.imaginary) / denominator,
-      imaginary: (a.imaginary * b.real - a.real * b.imaginary) / denominator
-    };
-  }
-
+  
   private powerComplex(base: ComplexNumber, exponent: ComplexNumber): ComplexNumber {
     // Handle real integer exponents efficiently
     if (base.imaginary === 0 && exponent.imaginary === 0 && Number.isInteger(exponent.real)) {
@@ -54,38 +36,21 @@ export class ExpressionEvaluator {
     }
 
     // General case: a^b = exp(b * log(a))
-    const logBase = this.logComplex(base);
+    const logBase = logComplex(base);
     const product = this.multiplyComplexScalar(logBase, exponent);
-    return this.expComplex(product);
+    return expComplex(product);
   }
 
   private powerReal(base: number, exponent: number): ComplexNumber {
     if (exponent >= 0) {
       let result = { real: 1, imaginary: 0 };
       for (let i = 0; i < exponent; i++) {
-        result = this.multiplyComplex(result, { real: base, imaginary: 0 });
+        result = multiplyComplex(result, { real: base, imaginary: 0 });
       }
       return result;
     } else {
       return this.powerReal(base, -exponent);
     }
-  }
-
-  private expComplex(z: ComplexNumber): ComplexNumber {
-    const expReal = Math.exp(z.real);
-    return {
-      real: expReal * Math.cos(z.imaginary),
-      imaginary: expReal * Math.sin(z.imaginary)
-    };
-  }
-
-  private logComplex(z: ComplexNumber): ComplexNumber {
-    const r = Math.sqrt(z.real * z.real + z.imaginary * z.imaginary);
-    const theta = Math.atan2(z.imaginary, z.real);
-    return {
-      real: Math.log(r),
-      imaginary: theta
-    };
   }
 
   private multiplyComplexScalar(z: ComplexNumber, scalar: ComplexNumber): ComplexNumber {
@@ -95,11 +60,7 @@ export class ExpressionEvaluator {
         imaginary: 0
       };
     }
-    return this.multiplyComplex(z, scalar);
-  }
-
-  private modulusComplex(z: ComplexNumber): number {
-    return Math.sqrt(z.real * z.real + z.imaginary * z.imaginary);
+    return multiplyComplex(z, scalar);
   }
 
   // Evaluate AST node
@@ -128,19 +89,20 @@ export class ExpressionEvaluator {
 
           // Handle the imaginary unit i
           if (node.value === 'i') {
-            console.log('Evaluating i as { real: 0, imaginary: 1 }');
             return {
               value: { real: 0, imaginary: 1 },
               isValid: true
             };
           }
 
-          const variable = this.variables.get(node.value as string);
-          if (variable) {
-            return {
-              value: variable,
-              isValid: true
-            };
+          {
+            const variable = this.variables.get(String(node.value));
+            if (variable) {
+              return {
+                value: variable,
+                isValid: true
+              };
+            }
           }
 
           return {
@@ -158,14 +120,26 @@ export class ExpressionEvaluator {
         case 'function':
           return this.evaluateFunction(node, z);
 
-        case 'modulus':
-          return this.evaluateModulus(node, z);
+        case 'modulus': {
+        const operandResult = this.evaluate(node.operand!, z);
+        if (!operandResult.isValid) {
+          return operandResult;
+        }
+
+        const operand = this.toComplex(operandResult.value);
+        const modulus = complexModulus(operand);
+
+        return {
+          value: modulus,
+          isValid: true
+        };
+      }
 
         default:
           return {
             value: { real: 0, imaginary: 0 },
             isValid: false,
-            error: `Unknown node type: ${(node as any).type}`
+            error: `Unknown node type: ${(node as { type: string }).type}`
           };
       }
     } catch (error) {
@@ -201,16 +175,16 @@ export class ExpressionEvaluator {
 
     switch (node.operator) {
       case '+':
-        result = this.addComplex(left, right);
+        result = addComplex(left, right);
         break;
       case '-':
-        result = this.subtractComplex(left, right);
+        result = subtractComplex(left, right);
         break;
       case '*':
-        result = this.multiplyComplex(left, right);
+        result = multiplyComplex(left, right);
         break;
       case '/':
-        result = this.divideComplex(left, right);
+        result = divideComplex(left, right);
         break;
       case '^':
         result = this.powerComplex(left, right);
@@ -288,29 +262,32 @@ export class ExpressionEvaluator {
     }
 
     switch (node.value) {
-      case 'Re':
+      case 'Re': {
         if (args.length !== 1) throw new Error('Re expects 1 argument');
         return {
           value: (args[0] as ComplexNumber).real,
           isValid: true
         };
+      }
 
-      case 'Im':
+      case 'Im': {
         if (args.length !== 1) throw new Error('Im expects 1 argument');
         return {
           value: (args[0] as ComplexNumber).imaginary,
           isValid: true
         };
+      }
 
-      case 'abs':
+      case 'abs': {
         if (args.length !== 1) throw new Error('abs expects 1 argument');
-        const modulus = this.modulusComplex(args[0] as ComplexNumber);
+        const modulus = complexModulus(args[0] as ComplexNumber);
         return {
           value: modulus,
           isValid: true
         };
+      }
 
-      case 'arg':
+      case 'arg': {
         if (args.length !== 1) throw new Error('arg expects 1 argument');
         const zArg = args[0] as ComplexNumber;
         const argument = Math.atan2(zArg.imaginary, zArg.real);
@@ -318,60 +295,63 @@ export class ExpressionEvaluator {
           value: argument,
           isValid: true
         };
+      }
 
-      case 'conj':
+      case 'conj': {
         if (args.length !== 1) throw new Error('conj expects 1 argument');
-        const conj = args[0] as ComplexNumber;
         return {
-          value: { real: conj.real, imaginary: -conj.imaginary },
+          value: conjComplex(args[0] as ComplexNumber),
           isValid: true
         };
+      }
 
-      case 'exp':
+      case 'exp': {
         if (args.length !== 1) throw new Error('exp expects 1 argument');
         return {
-          value: this.expComplex(args[0] as ComplexNumber),
+          value: expComplex(args[0] as ComplexNumber),
           isValid: true
         };
+      }
 
-      case 'log':
+      case 'log': {
         if (args.length !== 1) throw new Error('log expects 1 argument');
         return {
-          value: this.logComplex(args[0] as ComplexNumber),
+          value: logComplex(args[0] as ComplexNumber),
           isValid: true
         };
+      }
 
-      case 'sqrt':
+      case 'sqrt': {
         if (args.length !== 1) throw new Error('sqrt expects 1 argument');
-        const sqrtResult = this.sqrtComplex(args[0] as ComplexNumber);
         return {
-          value: sqrtResult,
+          value: sqrtComplex(args[0] as ComplexNumber),
           isValid: true
         };
+      }
 
-      case 'sin':
+      case 'sin': {
         if (args.length !== 1) throw new Error('sin expects 1 argument');
-        const sin = this.sinComplex(args[0] as ComplexNumber);
         return {
-          value: sin,
+          value: sinComplex(args[0] as ComplexNumber),
           isValid: true
         };
+      }
 
-      case 'cos':
+      case 'cos': {
         if (args.length !== 1) throw new Error('cos expects 1 argument');
-        const cos = this.cosComplex(args[0] as ComplexNumber);
         return {
-          value: cos,
+          value: cosComplex(args[0] as ComplexNumber),
           isValid: true
         };
+      }
 
-      case 'tan':
+      case 'tan': {
         if (args.length !== 1) throw new Error('tan expects 1 argument');
-        const tan = this.tanComplex(args[0] as ComplexNumber);
         return {
-          value: tan,
+          value: tanComplex(args[0] as ComplexNumber),
           isValid: true
         };
+      }
 
       default:
         return {
@@ -382,51 +362,8 @@ export class ExpressionEvaluator {
     }
   }
 
-  private evaluateModulus(node: ASTNode, z?: ComplexNumber): EvaluationResult {
-    const operandResult = this.evaluate(node.operand!, z);
-    if (!operandResult.isValid) {
-      return operandResult;
-    }
-
-    const operand = this.toComplex(operandResult.value);
-    const modulus = this.modulusComplex(operand);
-
-    return {
-      value: modulus,
-      isValid: true
-    };
-  }
-
-  private sqrtComplex(z: ComplexNumber): ComplexNumber {
-    const r = Math.sqrt(z.real * z.real + z.imaginary * z.imaginary);
-    const theta = Math.atan2(z.imaginary, z.real);
-    const sqrtR = Math.sqrt(r);
-    return {
-      real: sqrtR * Math.cos(theta / 2),
-      imaginary: sqrtR * Math.sin(theta / 2)
-    };
-  }
-
-  private sinComplex(z: ComplexNumber): ComplexNumber {
-    return {
-      real: Math.sin(z.real) * Math.cosh(z.imaginary),
-      imaginary: Math.cos(z.real) * Math.sinh(z.imaginary)
-    };
-  }
-
-  private cosComplex(z: ComplexNumber): ComplexNumber {
-    return {
-      real: Math.cos(z.real) * Math.cosh(z.imaginary),
-      imaginary: -Math.sin(z.real) * Math.sinh(z.imaginary)
-    };
-  }
-
-  private tanComplex(z: ComplexNumber): ComplexNumber {
-    const sin = this.sinComplex(z);
-    const cos = this.cosComplex(z);
-    return this.divideComplex(sin, cos);
-  }
-
+  
+  
   private evaluateComparison(left: EvaluationResult, right: EvaluationResult, operator: string): EvaluationResult {
     let result: boolean;
 
@@ -480,7 +417,7 @@ export class ExpressionEvaluator {
       return value;
     }
     // For complex numbers, use the modulus for comparison
-    return this.modulusComplex(value);
+    return complexModulus(value);
   }
 
   // Public method to evaluate expression with complex variable z

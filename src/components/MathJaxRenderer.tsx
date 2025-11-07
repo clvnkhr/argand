@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useEffect } from 'react';
 import 'katex/dist/katex.min.css';
 import { InlineMath, BlockMath } from 'react-katex';
 
@@ -16,8 +16,6 @@ export const MathJaxRenderer: React.FC<MathJaxRendererProps> = ({
   className = '',
   onRenderComplete
 }) => {
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (onRenderComplete) {
@@ -27,14 +25,6 @@ export const MathJaxRenderer: React.FC<MathJaxRendererProps> = ({
 
   const { convertToLatex } = useLatexConverter();
   const latexExpression = convertToLatex(expression);
-
-  if (error) {
-    return (
-      <span className={`math-error ${className}`} title={error}>
-        {expression}
-      </span>
-    );
-  }
 
   try {
     const MathComponent = display ? BlockMath : InlineMath;

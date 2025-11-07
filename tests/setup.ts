@@ -9,8 +9,8 @@ globalThis.it = it;
 if (typeof window === 'undefined') {
   global.window = {} as Window;
   global.document = {} as Document;
-  global.SVGElement = class {} as any;
-  global.HTMLElement = class {} as any;
+  global.SVGElement = class {} as unknown as typeof SVGElement;
+  global.HTMLElement = class {} as unknown as typeof HTMLElement;
 }
 
 // Complex number test utilities

@@ -91,13 +91,13 @@ function App() {
     }
 
     return { regions: allRegions };
-  }, [expressions, config, viewport, dimensions]);
+  }, [expressions, config, viewport]);
 
   const handleExpressionsChange = useCallback((newExpressions: PlotExpression[]) => {
     setExpressions(newExpressions);
   }, []);
 
-  const handleViewportChange = useCallback((newViewport: any) => {
+  const handleViewportChange = useCallback((newViewport: { offsetX: number; offsetY: number; zoomLevel: number }) => {
     setViewport(newViewport);
   }, []);
 

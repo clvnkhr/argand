@@ -1,16 +1,15 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { PlotExpression, NamedVariable } from '../types/expressions';
-import { ComplexNumber } from '../types/complex';
 import { ExpressionParser } from '../math/parser';
 import { ExpressionEvaluator } from '../math/evaluator';
 import { HybridPlotter, PlotConfig } from '../math/plotting';
-import { getTemplatesByCategory, expressionTemplates, ExpressionTemplate } from '../math/templates';
+import { expressionTemplates, ExpressionTemplate } from '../math/templates';
 import { ComplexExpressionDisplay } from './MathJaxRenderer';
 
 interface ExpressionPanelProps {
   onExpressionsChange: (expressions: PlotExpression[]) => void;
   config: PlotConfig;
-  onPlotGenerated: (plotData: any) => void;
+  onPlotGenerated: (plotData: { regions: unknown[] }) => void;
   isCollapsed?: boolean;
   onToggleCollapse?: () => void;
   showAllLabels?: boolean;
@@ -50,9 +49,9 @@ export const ExpressionPanel: React.FC<ExpressionPanelProps> = ({
     return colors[Math.floor(Math.random() * colors.length)];
   }, []);
 
-  const parser = new ExpressionParser();
-  const evaluator = new ExpressionEvaluator();
-  const plotter = new HybridPlotter(config);
+  const parser = useMemo(() => new ExpressionParser(), []);
+  const evaluator = useMemo(() => new ExpressionEvaluator(), []);
+  const plotter = useMemo(() => new HybridPlotter(config), [config]);
 
   // Update named variables in parser and evaluator
   useEffect(() => {
@@ -276,11 +275,11 @@ export const ExpressionPanel: React.FC<ExpressionPanelProps> = ({
           <button
             onClick={onToggleCollapse}
             className="w-6 h-6 flex items-center justify-center rounded border hover:border-solid transition-all duration-200 expression-item text-sm expression-label flex-shrink-0"
-            title="Collapse"
+            title={isCollapsed ? "Expand Panel" : "Collapse Panel"}
           >
-            ←
+            {isCollapsed ? '→' : '←'}
           </button>
-        </div>
+                  </div>
       </div>
 
       {/* Scrollable content */}

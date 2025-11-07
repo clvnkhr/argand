@@ -1275,9 +1275,9 @@ export class HybridPlotter {
       return { x: 0, y: 0 };
     }
 
-    const getValue = (result: any): number => {
+    const getValue = (result: { value: boolean | number | ComplexNumber; isValid: boolean }): number => {
       if (typeof result.value === 'boolean') return 0;
-      return typeof result.value === 'number' ? result.value : this.modulus(result.value);
+      return typeof result.value === 'number' ? result.value : this.modulus(result.value as ComplexNumber);
     };
 
     const valueXPlus = getValue(resultXPlus);
@@ -1393,7 +1393,7 @@ export class HybridPlotter {
         // For inequality, check if condition is true
         const z = { real: x, imaginary: y };
         const result = this.evaluator.evaluateExpression(ast, z);
-        if (result.isValid && (result.value as any) === true) {
+        if (result.isValid && result.value === true) {
           points.push({ x, y });
         }
       }
@@ -1436,7 +1436,7 @@ export class HybridPlotter {
 
       if (isHomogeneous && corners[0]) {
         // Add points if condition is true
-        if (corners[0] as any > 0) {
+        if (corners[0] > 0) {
           const subPoints = this.sampleCell(x, y, size, 3);
           points.push(...subPoints);
         }
@@ -1653,7 +1653,7 @@ export class HybridPlotter {
     if ((/\|Re\([^)]+\)\|=/.test(expression) || /abs\(Re\([^)]+\)\)=/.test(expression)) && !/\|Re\(z\)\|=/.test(expression) && !/abs\(Re\(z\)\)=/.test(expression)) {
       const match = expression.match(/=\s*([+-]?\d*\.?\d+)/);
       if (match) {
-        const value = parseFloat(match[1]);
+        parseFloat(match[1]); // Parse but don't need the value for this approach
         // Generate points in a grid pattern for numerical solving
         // This will be handled by the generic boundary tracing later
         const step = Math.max(viewportRange.range / 30, 0.2);
@@ -1669,7 +1669,7 @@ export class HybridPlotter {
     if ((/\|Im\([^)]+\)\|=/.test(expression) || /abs\(Im\([^)]+\)\)=/.test(expression)) && !/\|Im\(z\)\|=/.test(expression) && !/abs\(Im\(z\)\)=/.test(expression)) {
       const match = expression.match(/=\s*([+-]?\d*\.?\d+)/);
       if (match) {
-        const value = parseFloat(match[1]);
+        parseFloat(match[1]); // Parse but don't need the value for this approach
         // Generate points in a grid pattern for numerical solving
         // This will be handled by the generic boundary tracing later
         const step = Math.max(viewportRange.range / 30, 0.2);
@@ -1953,7 +1953,7 @@ export class HybridPlotter {
     if (!this.isModulusSquared(node)) return null;
 
     // Get the modulus node (left side of ^)
-    const modulusNode = (node as any).left;
+    const modulusNode = (node as { left: { type: string; operand?: ASTNode } }).left;
     if (modulusNode.type === 'modulus') {
       return this.extractCenterFromModulus(modulusNode);
     }

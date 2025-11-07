@@ -1,5 +1,6 @@
 import { Token, ASTNode, ParseContext, MathFunction } from '../types/expressions';
 import { ComplexNumber } from '../types/complex';
+import { complexModulus, complexArgument, expComplex, logComplex, sqrtComplex, sinComplex, cosComplex, tanComplex, conjComplex } from '../utils/complex';
 
 export class ExpressionParser {
   private functions: Map<string, MathFunction> = new Map();
@@ -35,8 +36,7 @@ export class ExpressionParser {
       name: 'abs',
       argCount: 1,
       evaluate: (args) => {
-        const z = args[0] as ComplexNumber;
-        return Math.sqrt(z.real * z.real + z.imaginary * z.imaginary);
+        return complexModulus(args[0] as ComplexNumber);
       },
       description: 'Modulus of complex number'
     });
@@ -45,8 +45,7 @@ export class ExpressionParser {
       name: 'arg',
       argCount: 1,
       evaluate: (args) => {
-        const z = args[0] as ComplexNumber;
-        return Math.atan2(z.imaginary, z.real);
+        return complexArgument(args[0] as ComplexNumber);
       },
       description: 'Argument of complex number'
     });
@@ -55,8 +54,7 @@ export class ExpressionParser {
       name: 'conj',
       argCount: 1,
       evaluate: (args) => {
-        const z = args[0] as ComplexNumber;
-        return { real: z.real, imaginary: -z.imaginary };
+        return conjComplex(args[0] as ComplexNumber);
       },
       description: 'Complex conjugate'
     });
@@ -65,12 +63,7 @@ export class ExpressionParser {
       name: 'exp',
       argCount: 1,
       evaluate: (args) => {
-        const z = args[0] as ComplexNumber;
-        const expReal = Math.exp(z.real);
-        return {
-          real: expReal * Math.cos(z.imaginary),
-          imaginary: expReal * Math.sin(z.imaginary)
-        };
+        return expComplex(args[0] as ComplexNumber);
       },
       description: 'Exponential function'
     });
@@ -79,13 +72,7 @@ export class ExpressionParser {
       name: 'log',
       argCount: 1,
       evaluate: (args) => {
-        const z = args[0] as ComplexNumber;
-        const r = Math.sqrt(z.real * z.real + z.imaginary * z.imaginary);
-        const theta = Math.atan2(z.imaginary, z.real);
-        return {
-          real: Math.log(r),
-          imaginary: theta
-        };
+        return logComplex(args[0] as ComplexNumber);
       },
       description: 'Natural logarithm'
     });
@@ -94,14 +81,7 @@ export class ExpressionParser {
       name: 'sqrt',
       argCount: 1,
       evaluate: (args) => {
-        const z = args[0] as ComplexNumber;
-        const r = Math.sqrt(z.real * z.real + z.imaginary * z.imaginary);
-        const theta = Math.atan2(z.imaginary, z.real);
-        const sqrtR = Math.sqrt(r);
-        return {
-          real: sqrtR * Math.cos(theta / 2),
-          imaginary: sqrtR * Math.sin(theta / 2)
-        };
+        return sqrtComplex(args[0] as ComplexNumber);
       },
       description: 'Square root'
     });
@@ -111,11 +91,7 @@ export class ExpressionParser {
       name: 'sin',
       argCount: 1,
       evaluate: (args) => {
-        const z = args[0] as ComplexNumber;
-        return {
-          real: Math.sin(z.real) * Math.cosh(z.imaginary),
-          imaginary: Math.cos(z.real) * Math.sinh(z.imaginary)
-        };
+        return sinComplex(args[0] as ComplexNumber);
       },
       description: 'Sine function'
     });
@@ -124,11 +100,7 @@ export class ExpressionParser {
       name: 'cos',
       argCount: 1,
       evaluate: (args) => {
-        const z = args[0] as ComplexNumber;
-        return {
-          real: Math.cos(z.real) * Math.cosh(z.imaginary),
-          imaginary: -Math.sin(z.real) * Math.sinh(z.imaginary)
-        };
+        return cosComplex(args[0] as ComplexNumber);
       },
       description: 'Cosine function'
     });
@@ -137,21 +109,7 @@ export class ExpressionParser {
       name: 'tan',
       argCount: 1,
       evaluate: (args) => {
-        const z = args[0] as ComplexNumber;
-        const sin = {
-          real: Math.sin(z.real) * Math.cosh(z.imaginary),
-          imaginary: Math.cos(z.real) * Math.sinh(z.imaginary)
-        };
-        const cos = {
-          real: Math.cos(z.real) * Math.cosh(z.imaginary),
-          imaginary: -Math.sin(z.real) * Math.sinh(z.imaginary)
-        };
-        // Complex division: sin/cos
-        const denominator = cos.real * cos.real + cos.imaginary * cos.imaginary;
-        return {
-          real: (sin.real * cos.real + sin.imaginary * cos.imaginary) / denominator,
-          imaginary: (sin.imaginary * cos.real - sin.real * cos.imaginary) / denominator
-        };
+        return tanComplex(args[0] as ComplexNumber);
       },
       description: 'Tangent function'
     });
@@ -585,7 +543,7 @@ export class ExpressionParser {
       case 'FUNCTION':
         return this.parseFunction(context);
 
-      case 'PARENOPEN':
+      case 'PARENOPEN': {
         context.currentPosition++;
         const expr = this.parseExpression(context);
 
@@ -596,6 +554,7 @@ export class ExpressionParser {
 
         context.currentPosition++;
         return expr;
+      }
 
       default:
         throw new Error(`Unexpected token: ${token.value} at position ${token.position}`);

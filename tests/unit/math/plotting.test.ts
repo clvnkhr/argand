@@ -1,7 +1,7 @@
 import { ExpressionParser } from '../../../src/math/parser';
 import { ExpressionEvaluator } from '../../../src/math/evaluator';
 import { HybridPlotter } from '../../../src/math/plotting';
-import { createComplex, expectComplexEqual } from '../../setup';
+import { createComplex } from '../../setup';
 import type { Point, PlotConfig } from '../../../src/types/complex';
 
 describe('HybridPlotter - Curve Drawing', () => {

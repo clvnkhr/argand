@@ -50,11 +50,11 @@ const ArgandDiagram: React.FC<ArgandDiagramProps> = ({
   const labelPositionCache = useRef<Map<string, { x: number; y: number }>>(new Map());
 
   // Default viewport if not provided
-  const currentViewport = viewport || {
+  const currentViewport = useMemo(() => viewport || {
     offsetX: 0,
     offsetY: 0,
     zoomLevel: 0.66
-  };
+  }, [viewport]);
 
   // Format tick labels to handle floating point precision gracefully
   const formatTickLabel = useCallback((value: number): string => {
@@ -160,12 +160,9 @@ const ArgandDiagram: React.FC<ArgandDiagramProps> = ({
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const svgRef = useRef<SVGSVGElement>(null);
 
-  // Debounced viewport update for performance during panning
-  const viewportUpdateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
   const baseScale = (width * 3) / (2 * range);
   const scale = baseScale * currentViewport.zoomLevel;
-  const center = { x: width / 2, y: height / 2 };
+  const center = useMemo(() => ({ x: width / 2, y: height / 2 }), [width, height]);
 
   // Helper functions to convert between coordinate systems
   const toScreenCoords = useCallback((x: number, y: number) => {
@@ -427,7 +424,6 @@ const ArgandDiagram: React.FC<ArgandDiagramProps> = ({
 
   const gridLines = useMemo(() => {
     const lines = [];
-    const tickSize = config?.tickSize || 6;
 
     // Calculate visible range in math coordinates
     const topLeft = toMathCoords(0, 0);
