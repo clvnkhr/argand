@@ -38,7 +38,7 @@ function App() {
     width: dimensions.width,
     height: dimensions.height,
     range: 15,
-    resolution: 50,
+    resolution: 100, // Increased from 50 for better inequality quality
     adaptiveSampling: true,
     showGrid: true,
     showAxes: true,

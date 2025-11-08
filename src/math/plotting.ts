@@ -1422,14 +1422,14 @@ export class HybridPlotter {
   }
 
   private adaptiveSampleInequality(ast: ASTNode, expression: string, expressionConfig?: PlotExpression): PlotRegion[] {
-    // Start with coarse grid, refine where needed
+    // Enhanced adaptive sampling for better quality
     const regions: PlotRegion[] = [];
     const points: Point[] = [];
-    const initialResolution = Math.floor(this.config.resolution / 4);
+    const initialResolution = Math.floor(this.config.resolution / 2); // Increased from /4 to /2 for better initial quality
 
     // Recursive subdivision function
     const subdivide = (x: number, y: number, size: number, depth: number) => {
-      if (depth > 3 || size < 0.1) return; // Limit recursion depth
+      if (depth > 4 || size < 0.05) return; // Increased depth and smaller cells for better detail
 
       // Sample corners of the cell
       const corners = [

@@ -585,29 +585,335 @@ const ArgandDiagram: React.FC<ArgandDiagramProps> = ({
     );
   };
 
+  const createRegionPath = (points: Point[]): string | null => {
+    if (points.length < 3) return null;
+
+    // Try to detect if this is approximately circular by checking point distribution
+    const bounds = getPointBounds(points);
+    if (!bounds) return null;
+
+    const { minX, maxX, minY, maxY } = bounds;
+    const centerX = (minX + maxX) / 2;
+    const centerY = (minY + maxY) / 2;
+    const radiusX = (maxX - minX) / 2;
+    const radiusY = (maxY - minY) / 2;
+
+    // Check if it's roughly circular (similar radii in X and Y)
+    const aspectRatio = radiusX / radiusY;
+    if (aspectRatio > 0.8 && aspectRatio < 1.2) {
+      // Likely circular, create a circle
+      const screenCenter = toScreenCoords(centerX, centerY);
+      const screenRadius = ((radiusX + radiusY) / 2) * scale; // Average radius scaled
+
+      return `M ${screenCenter.x - screenRadius} ${screenCenter.y} A ${screenRadius} ${screenRadius} 0 0 1 ${screenCenter.x + screenRadius} ${screenCenter.y} A ${screenRadius} ${screenRadius} 0 0 1 ${screenCenter.x - screenRadius} ${screenCenter.y}`;
+    } else {
+      // Not circular, use convex hull
+      const hullPoints = computeConvexHull(points);
+      if (hullPoints.length < 3) return null;
+
+      const pathData = hullPoints
+        .map((point, i) => {
+          const screen = toScreenCoords(point.x, point.y);
+          return `${i === 0 ? 'M' : 'L'} ${screen.x.toFixed(1)} ${screen.y.toFixed(1)}`;
+        })
+        .join(' ') + ' Z';
+
+      return pathData;
+    }
+  };
+
+  const createSmoothPath = (points: Point[]): string => {
+    if (points.length < 2) return '';
+
+    const pathCommands: string[] = [];
+
+    points.forEach((point, i) => {
+      const screen = toScreenCoords(point.x, point.y);
+      const x = screen.x.toFixed(1);
+      const y = screen.y.toFixed(1);
+
+      if (i === 0) {
+        pathCommands.push(`M ${x} ${y}`);
+      } else if (i === 1 || i === points.length - 1) {
+        // First and last segments use lines
+        pathCommands.push(`L ${x} ${y}`);
+      } else {
+        // Use quadratic bezier curves for smoother paths
+        const prevScreen = toScreenCoords(points[i - 1].x, points[i - 1].y);
+        const nextScreen = toScreenCoords(points[i + 1].x, points[i + 1].y);
+
+        const controlX = ((parseFloat(prevScreen.x) + parseFloat(nextScreen.x)) / 2).toFixed(1);
+        const controlY = ((parseFloat(prevScreen.y) + parseFloat(nextScreen.y)) / 2).toFixed(1);
+
+        pathCommands.push(`Q ${controlX} ${controlY} ${x} ${y}`);
+      }
+    });
+
+    // Close the path
+    pathCommands.push('Z');
+
+    return pathCommands.join(' ');
+  };
+
+  const computeRegionBoundary = (points: Point[]): Point[] => {
+    if (points.length < 3) return points;
+
+    // For complex regions, use alpha shape / concave hull algorithm
+    // This gives better boundaries than convex hull for inequality regions
+
+    // First try to create a more accurate boundary using grid-based approach
+    const boundary = extractRegionBoundary(points);
+
+    if (boundary.length >= 3) {
+      // Apply smoothing to create cleaner edges
+      return smoothBoundary(boundary);
+    }
+
+    // Fallback to convex hull if boundary extraction fails
+    return computeConvexHull(points);
+  };
+
+  const extractRegionBoundary = (points: Point[]): Point[] => {
+    // Create a density grid to find the outer boundary
+    const bounds = getPointBounds(points);
+    if (!bounds) return [];
+
+    const { minX, maxX, minY, maxY } = bounds;
+    const gridSize = 0.2; // Finer grid for better boundary detection
+    const gridWidth = Math.ceil((maxX - minX) / gridSize);
+    const gridHeight = Math.ceil((maxY - minY) / gridSize);
+
+    const grid: boolean[][] = Array(gridHeight).fill(null).map(() => Array(gridWidth).fill(false));
+
+    // Populate grid with points
+    points.forEach(point => {
+      const gridX = Math.floor((point.x - minX) / gridSize);
+      const gridY = Math.floor((point.y - minY) / gridSize);
+
+      if (gridX >= 0 && gridX < gridWidth && gridY >= 0 && gridY < gridHeight) {
+        // Mark surrounding cells to create a filled region
+        for (let dx = -1; dx <= 1; dx++) {
+          for (let dy = -1; dy <= 1; dy++) {
+            const nx = gridX + dx;
+            const ny = gridY + dy;
+            if (nx >= 0 && nx < gridWidth && ny >= 0 && ny < gridHeight) {
+              grid[ny][nx] = true;
+            }
+          }
+        }
+      }
+    });
+
+    // Extract boundary using Moore neighborhood tracing
+    const boundaryPoints: Point[] = [];
+    const visited = new Set<string>();
+
+    for (let y = 1; y < gridHeight - 1; y++) {
+      for (let x = 1; x < gridWidth - 1; x++) {
+        const key = `${x},${y}`;
+        if (grid[y][x] && !visited.has(key) && isBoundaryCell(grid, x, y)) {
+          const trace = traceBoundary(grid, x, y, visited, minX, minY, gridSize);
+          boundaryPoints.push(...trace);
+        }
+      }
+    }
+
+    return boundaryPoints;
+  };
+
+  const getPointBounds = (points: Point[]) => {
+    if (points.length === 0) return null;
+
+    let minX = points[0].x, maxX = points[0].x;
+    let minY = points[0].y, maxY = points[0].y;
+
+    points.forEach(point => {
+      minX = Math.min(minX, point.x);
+      maxX = Math.max(maxX, point.x);
+      minY = Math.min(minY, point.y);
+      maxY = Math.max(maxY, point.y);
+    });
+
+    const padding = 0.5 * Math.max(maxX - minX, maxY - minY);
+    return {
+      minX: minX - padding,
+      maxX: maxX + padding,
+      minY: minY - padding,
+      maxY: maxY + padding
+    };
+  };
+
+  const isBoundaryCell = (grid: boolean[][], x: number, y: number): boolean => {
+    // A cell is on the boundary if it's filled but has at least one empty neighbor
+    if (!grid[y][x]) return false;
+
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        if (dx === 0 && dy === 0) continue;
+        const ny = y + dy;
+        const nx = x + dx;
+        if (ny < 0 || ny >= grid.length || nx < 0 || nx >= grid[0].length || !grid[ny][nx]) {
+          return true;
+        }
+      }
+    }
+    return false;
+  };
+
+  const traceBoundary = (grid: boolean[][], startX: number, startY: number, visited: Set<string>,
+                        offsetX: number, offsetY: number, cellSize: number): Point[] => {
+    const boundary: Point[] = [];
+    let x = startX, y = startY;
+    let direction = 0; // Start direction (0-7 for 8 directions)
+    const directions = [
+      [-1, 0], [-1, 1], [0, 1], [1, 1],
+      [1, 0], [1, -1], [0, -1], [-1, -1]
+    ];
+
+    const startKey = `${x},${y}`;
+
+    do {
+      visited.add(`${x},${y}`);
+
+      // Add boundary point with sub-pixel precision
+      boundary.push({
+        x: offsetX + x * cellSize + cellSize / 2,
+        y: offsetY + y * cellSize + cellSize / 2
+      });
+
+      // Find next boundary cell
+      let found = false;
+      for (let i = 0; i < 8; i++) {
+        const newDir = (direction + i + 6) % 8; // Turn right first
+        const [dx, dy] = directions[newDir];
+        const nx = x + dx;
+        const ny = y + dy;
+
+        if (nx >= 0 && nx < grid[0].length && ny >= 0 && ny < grid.length &&
+            grid[ny][nx] && isBoundaryCell(grid, nx, ny)) {
+          x = nx;
+          y = ny;
+          direction = newDir;
+          found = true;
+          break;
+        }
+      }
+
+      if (!found) break;
+
+    } while (x !== startX || y !== startY || boundary.length === 1);
+
+    return boundary;
+  };
+
+  const smoothBoundary = (points: Point[]): Point[] => {
+    if (points.length < 4) return points;
+
+    const smoothed: Point[] = [];
+
+    for (let i = 0; i < points.length; i++) {
+      const prev = points[(i - 1 + points.length) % points.length];
+      const curr = points[i];
+      const next = points[(i + 1) % points.length];
+
+      // Apply simple averaging smoothing
+      const weight = 0.3; // Smoothing factor
+      smoothed.push({
+        x: curr.x * (1 - 2 * weight) + (prev.x + next.x) * weight,
+        y: curr.y * (1 - 2 * weight) + (prev.y + next.y) * weight
+      });
+    }
+
+    return smoothed;
+  };
+
+  const computeConvexHull = (points: Point[]): Point[] => {
+    if (points.length < 3) return points;
+
+    // Graham's scan algorithm for convex hull (fallback)
+    const sortedPoints = [...points].sort((a, b) => {
+      if (a.x !== b.x) return a.x - b.x;
+      return a.y - b.y;
+    });
+
+    // Remove duplicates
+    const uniquePoints: Point[] = [];
+    for (let i = 0; i < sortedPoints.length; i++) {
+      if (i === 0 || sortedPoints[i].x !== sortedPoints[i-1].x || sortedPoints[i].y !== sortedPoints[i-1].y) {
+        uniquePoints.push(sortedPoints[i]);
+      }
+    }
+
+    if (uniquePoints.length < 3) return uniquePoints;
+
+    // Cross product of vectors OA and OB
+    const crossProduct = (O: Point, A: Point, B: Point): number => {
+      return (A.x - O.x) * (B.y - O.y) - (A.y - O.y) * (B.x - O.x);
+    };
+
+    // Build lower hull
+    const lower: Point[] = [];
+    for (const point of uniquePoints) {
+      while (lower.length >= 2 && crossProduct(lower[lower.length - 2], lower[lower.length - 1], point) <= 0) {
+        lower.pop();
+      }
+      lower.push(point);
+    }
+
+    // Build upper hull
+    const upper: Point[] = [];
+    for (let i = uniquePoints.length - 1; i >= 0; i--) {
+      const point = uniquePoints[i];
+      while (upper.length >= 2 && crossProduct(upper[upper.length - 2], upper[upper.length - 1], point) <= 0) {
+        upper.pop();
+      }
+      upper.push(point);
+    }
+
+    // Remove last point of each half because it's repeated
+    lower.pop();
+    upper.pop();
+
+    // Concatenate lower and upper hulls
+    return [...lower, ...upper];
+  };
+
   const renderPlotRegion = (region: PlotRegion, index: number) => {
     const { points, boundary, type, color = '#4ecdc4', lineThickness = 2 } = region;
 
     const elements = [];
 
-    // Render filled region as solid rectangles
+    // Render filled region using simple effective method
     if ((type === 'filled' || type === 'both') && points.length > 0) {
-      // Create filled rectangles for each point to form a solid region
-      points.forEach((point, pointIndex) => {
-        const screen = toScreenCoords(point.x, point.y);
-        const pointSize = 4; // Size of each point rectangle for solid appearance
+      // Simple convex hull for solid filled region
+      const regionPath = createRegionPath(points);
+      if (regionPath) {
         elements.push(
-          <rect
-            key={`region-point-${index}-${pointIndex}`}
-            x={screen.x - pointSize/2}
-            y={screen.y - pointSize/2}
-            width={pointSize}
-            height={pointSize}
+          <path
+            key={`region-filled-${index}`}
+            d={regionPath}
             fill={color}
-            fillOpacity={0.6}
+            fillOpacity={0.3}
+            stroke="none"
           />
         );
-      });
+      } else {
+        // Fallback: render as small circles for sparse regions
+        points.forEach((point, pointIndex) => {
+          const screen = toScreenCoords(point.x, point.y);
+          const pointSize = 2;
+          elements.push(
+            <circle
+              key={`region-point-${index}-${pointIndex}`}
+              cx={screen.x}
+              cy={screen.y}
+              r={pointSize}
+              fill={color}
+              fillOpacity={0.4}
+            />
+          );
+        });
+      }
     }
 
     // Render boundary if type includes boundary or boundary exists
