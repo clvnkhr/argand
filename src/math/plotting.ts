@@ -1401,7 +1401,7 @@ export class HybridPlotter {
         // For inequality, check if condition is true
         const z = { real: x, imaginary: y };
         const result = this.evaluator.evaluateExpression(ast, z);
-        if (result.isValid && result.value === true) {
+        if (result.isValid && typeof result.value === 'boolean' && result.value === true) {
           points.push({ x, y });
         }
       }
@@ -1964,7 +1964,7 @@ export class HybridPlotter {
     // Get the modulus node (left side of ^)
     const modulusNode = (node as { left: { type: string; operand?: ASTNode } }).left;
     if (modulusNode.type === 'modulus') {
-      return this.extractCenterFromModulus(modulusNode);
+      return this.extractCenterFromModulus(modulusNode as ASTNode);
     }
 
     return null;

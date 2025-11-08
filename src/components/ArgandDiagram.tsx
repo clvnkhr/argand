@@ -642,8 +642,8 @@ const ArgandDiagram: React.FC<ArgandDiagramProps> = ({
         const prevScreen = toScreenCoords(points[i - 1].x, points[i - 1].y);
         const nextScreen = toScreenCoords(points[i + 1].x, points[i + 1].y);
 
-        const controlX = ((parseFloat(prevScreen.x) + parseFloat(nextScreen.x)) / 2).toFixed(1);
-        const controlY = ((parseFloat(prevScreen.y) + parseFloat(nextScreen.y)) / 2).toFixed(1);
+        const controlX = ((prevScreen.x + nextScreen.x) / 2).toFixed(1);
+        const controlY = ((prevScreen.y + nextScreen.y) / 2).toFixed(1);
 
         pathCommands.push(`Q ${controlX} ${controlY} ${x} ${y}`);
       }
