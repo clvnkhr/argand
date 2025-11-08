@@ -160,6 +160,11 @@ const ArgandDiagram: React.FC<ArgandDiagramProps> = ({
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const svgRef = useRef<SVGSVGElement>(null);
 
+  // Touch state for mobile interaction
+  const [touchStart, setTouchStart] = useState({ x: 0, y: 0, distance: 0 });
+  const [isTouchZooming, setIsTouchZooming] = useState(false);
+  const [touchStartViewport, setTouchStartViewport] = useState<ViewportState | null>(null);
+
   const baseScale = (width * 3) / (2 * range);
   const scale = baseScale * currentViewport.zoomLevel;
   const center = useMemo(() => ({ x: width / 2, y: height / 2 }), [width, height]);
@@ -252,6 +257,132 @@ const ArgandDiagram: React.FC<ArgandDiagramProps> = ({
       setIsPanning(false);
     }, 50);
   }, []);
+
+  // Touch event handlers for mobile interaction
+  const handleTouchStart = useCallback((e: React.TouchEvent<SVGSVGElement>) => {
+    const svgRect = svgRef.current?.getBoundingClientRect();
+    if (!svgRect) return;
+
+    if (e.touches.length === 1) {
+      // Single touch - start panning
+      setIsDragging(true);
+      setIsPanning(true);
+
+      // Cache current plot regions for display during panning
+      if (plotData?.regions) {
+        cachedPlotRegions.current = [...plotData.regions];
+      }
+
+      const touch = e.touches[0];
+      setDragStart({ x: touch.clientX, y: touch.clientY });
+      setTouchStart({ x: touch.clientX, y: touch.clientY, distance: 0 });
+    } else if (e.touches.length === 2) {
+      // Two touches - start zooming
+      setIsTouchZooming(true);
+      setIsDragging(false);
+
+      const touch1 = e.touches[0];
+      const touch2 = e.touches[1];
+      const distance = Math.sqrt(
+        Math.pow(touch2.clientX - touch1.clientX, 2) +
+        Math.pow(touch2.clientY - touch1.clientY, 2)
+      );
+
+      const centerX = (touch1.clientX + touch2.clientX) / 2;
+      const centerY = (touch1.clientY + touch2.clientY) / 2;
+
+      setTouchStart({ x: centerX, y: centerY, distance });
+      setTouchStartViewport(currentViewport);
+    }
+
+    e.preventDefault();
+  }, [plotData, currentViewport]);
+
+  const handleTouchMove = useCallback((e: React.TouchEvent<SVGSVGElement>) => {
+    const svgRect = svgRef.current?.getBoundingClientRect();
+    if (!svgRect) return;
+
+    if (e.touches.length === 1 && isDragging && !isTouchZooming) {
+      // Single touch - pan
+      const touch = e.touches[0];
+      const deltaX = touch.clientX - dragStart.x;
+      const deltaY = touch.clientY - dragStart.y;
+
+      // Convert pixel delta to math coordinate delta
+      const mathDeltaX = -deltaX / scale;
+      const mathDeltaY = deltaY / scale; // Inverted because y-axis is flipped
+
+      const newViewport = {
+        ...currentViewport,
+        offsetX: currentViewport.offsetX + mathDeltaX,
+        offsetY: currentViewport.offsetY + mathDeltaY
+      };
+
+      // Update viewport immediately for smooth panning
+      updateViewport(newViewport);
+
+      setDragStart({ x: touch.clientX, y: touch.clientY });
+    } else if (e.touches.length === 2 && isTouchZooming && touchStartViewport) {
+      // Two touches - zoom
+      const touch1 = e.touches[0];
+      const touch2 = e.touches[1];
+      const distance = Math.sqrt(
+        Math.pow(touch2.clientX - touch1.clientX, 2) +
+        Math.pow(touch2.clientY - touch1.clientY, 2)
+      );
+
+      const centerX = (touch1.clientX + touch2.clientX) / 2;
+      const centerY = (touch1.clientY + touch2.clientY) / 2;
+
+      const scaleFactor = touchStart.distance > 0 ? distance / touchStart.distance : 1;
+
+      // Calculate new zoom level
+      const newZoomLevel = touchStartViewport.zoomLevel * scaleFactor;
+
+      // Keep the center point fixed during zoom
+      const worldBeforeZoomX = (centerX - center.x) / scale + touchStartViewport.offsetX;
+      const worldBeforeZoomY = -(centerY - center.y) / scale + touchStartViewport.offsetY;
+
+      const newScale = baseScale * newZoomLevel;
+      const newOffsetX = worldBeforeZoomX - (centerX - center.x) / newScale;
+      const newOffsetY = worldBeforeZoomY + (centerY - center.y) / newScale;
+
+      const newViewport = {
+        ...touchStartViewport,
+        offsetX: newOffsetX,
+        offsetY: newOffsetY,
+        zoomLevel: newZoomLevel
+      };
+
+      updateViewport(newViewport);
+    }
+
+    e.preventDefault();
+  }, [isDragging, isTouchZooming, dragStart, touchStart, touchStartViewport, scale, currentViewport, updateViewport, center, baseScale]);
+
+  const handleTouchEnd = useCallback((e: React.TouchEvent<SVGSVGElement>) => {
+    if (e.touches.length === 0) {
+      // All touches ended
+      setIsDragging(false);
+      setIsTouchZooming(false);
+      setTouchStartViewport(null);
+
+      // Add a small delay before ending panning to prevent flicker
+      setTimeout(() => {
+        setIsPanning(false);
+      }, 50);
+    } else if (e.touches.length === 1 && isTouchZooming) {
+      // Transition from zoom to pan
+      setIsTouchZooming(false);
+      setIsDragging(true);
+      setIsPanning(true);
+
+      const touch = e.touches[0];
+      setDragStart({ x: touch.clientX, y: touch.clientY });
+    }
+
+    e.preventDefault();
+  }, [isTouchZooming]);
 
 
   // Keyboard shortcuts (only when SVG is focused or with Ctrl/Cmd)
@@ -1179,12 +1310,15 @@ const ArgandDiagram: React.FC<ArgandDiagramProps> = ({
         width={width}
         height={height}
         className="border-l border-r border-b diagram-svg-border focus:outline-none focus:ring-2 focus:ring-blue-400"
-        style={{ cursor: isDragging ? 'grabbing' : 'grab' }}
+        style={{ cursor: isDragging ? 'grabbing' : 'grab', touchAction: 'none' }}
         tabIndex={0}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseLeave}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
         onClick={() => svgRef.current?.focus()}
       >
         {gridLines}

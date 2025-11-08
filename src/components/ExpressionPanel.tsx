@@ -35,6 +35,18 @@ export const ExpressionPanel: React.FC<ExpressionPanelProps> = ({
   const [parseError, setParseError] = useState<string | null>(null);
   const [isInternalClick, setIsInternalClick] = useState(false);
   const internalClickRef = useRef(false);
+  const [isMobile, setIsMobile] = useState(false);
+
+  // Update mobile state on window resize
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth <= 768);
+    };
+
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   // Function to generate random colors
   const generateRandomColor = useCallback(() => {
@@ -225,10 +237,12 @@ export const ExpressionPanel: React.FC<ExpressionPanelProps> = ({
     setParseError(null);
   }, []);
 
-  
   return (
     <div className={`h-full flex flex-col expression-panel border-l ${isCollapsed ? 'controls-container collapsed' : ''}`}
-         style={{ width: isCollapsed ? 0 : '320px', minWidth: isCollapsed ? 0 : '50px' }}>
+         style={{
+           width: isCollapsed ? 0 : (isMobile ? '100%' : '320px'),
+           minWidth: isCollapsed ? 0 : (isMobile ? '100%' : '50px')
+         }}>
       {/* Fixed header */}
       <div className="px-4 py-3 border-b flex items-center gap-2">
         <span className="text-sm font-semibold expression-label">Expressions</span>
@@ -343,7 +357,9 @@ export const ExpressionPanel: React.FC<ExpressionPanelProps> = ({
                         }
                       }}
                       placeholder="Enter expression..."
-                      className="expression-input flex-1 px-2 py-1 text-xs border rounded transition-all duration-200"
+                      className={`expression-input flex-1 px-2 py-1 text-xs border rounded transition-all duration-200 ${
+                        isMobile ? 'py-2 text-sm' : 'py-1'
+                      }`}
                       autoFocus
                     />
                     <input
@@ -351,7 +367,9 @@ export const ExpressionPanel: React.FC<ExpressionPanelProps> = ({
                       value={editingLabel}
                       onChange={(e) => setEditingLabel(e.target.value)}
                       placeholder="Label"
-                      className="expression-input w-12 px-1 py-1 text-xs border rounded transition-all duration-200"
+                      className={`expression-input px-1 py-1 text-xs border rounded transition-all duration-200 ${
+                        isMobile ? 'w-16 py-2 text-sm' : 'w-12 py-1'
+                      }`}
                     />
                   </div>
 
@@ -363,7 +381,9 @@ export const ExpressionPanel: React.FC<ExpressionPanelProps> = ({
                           type="color"
                           value={editingColor}
                           onChange={(e) => setEditingColor(e.target.value)}
-                          className="w-8 h-8 expression-input border rounded cursor-pointer"
+                          className={`expression-input border rounded cursor-pointer ${
+                            isMobile ? 'w-12 h-12' : 'w-8 h-8'
+                          }`}
                         />
                       </div>
                     </div>

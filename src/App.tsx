@@ -20,7 +20,8 @@ function App() {
 
   useEffect(() => {
     const updateDimensions = () => {
-      const controlsWidth = isCollapsed ? 0 : 320;
+      const isMobile = window.innerWidth <= 768;
+      const controlsWidth = isCollapsed ? 0 : (isMobile ? 0 : 320);
       const controlsBarHeight = 40; // Account for zoom controls bar
 
       setDimensions({
