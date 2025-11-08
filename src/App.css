@@ -60,6 +60,30 @@
   border: 1px solid;
 }
 
+/* Mobile responsive styles */
+@media (max-width: 768px) {
+  .App {
+    flex-direction: column;
+  }
+
+  .expression-panel {
+    width: 100% !important;
+    min-width: 100% !important;
+    height: 50vh;
+    border-left: none;
+    border-bottom: 1px solid;
+  }
+
+  .argand-diagram {
+    height: 50vh;
+  }
+
+  .expression-panel.collapsed {
+    height: 0;
+    overflow: hidden;
+  }
+}
+
 @media (prefers-color-scheme: light) {
   .diagram-grid-line {
     stroke: #e0e0e0;
