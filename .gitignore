@@ -30,5 +30,4 @@ dist-ssr
 .env.production.local
 
 # Build artifacts
-dist/
 build/
