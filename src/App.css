@@ -101,6 +101,17 @@
   svg {
     touch-action: manipulation;
   }
+
+  /* Better scrolling on mobile */
+  .expression-panel {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+
+  /* Ensure templates section doesn't overflow */
+  .expression-panel .space-y-1 {
+    max-height: calc(50vh - 200px);
+  }
 }
 
 @media (prefers-color-scheme: light) {

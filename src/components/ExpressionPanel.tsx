@@ -3,7 +3,6 @@ import { PlotExpression, NamedVariable } from '../types/expressions';
 import { ExpressionParser } from '../math/parser';
 import { ExpressionEvaluator } from '../math/evaluator';
 import { HybridPlotter, PlotConfig } from '../math/plotting';
-import { expressionTemplates, ExpressionTemplate } from '../math/templates';
 import { ComplexExpressionDisplay } from './MathJaxRenderer';
 
 interface ExpressionPanelProps {
@@ -273,7 +272,7 @@ export const ExpressionPanel: React.FC<ExpressionPanelProps> = ({
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto p-2 space-y-2">
+      <div className="flex-1 overflow-y-auto p-2 space-y-2 min-h-0">
 
           {/* Error Display */}
           {parseError && (
@@ -462,7 +461,7 @@ export const ExpressionPanel: React.FC<ExpressionPanelProps> = ({
           {/* Named Variables */}
           {namedVariables.length > 0 && (
             <div className="border-t pt-4">
-              <h4 className="font-semibold expression-label text-sm mb-2">Variables</h4>
+              <div className="font-semibold expression-label text-sm mb-2">Variables</div>
               <div className="space-y-1">
                 {namedVariables.map(variable => (
                   <div key={variable.name} className="expression-item flex items-center justify-between p-2 border rounded-lg">
@@ -483,17 +482,6 @@ export const ExpressionPanel: React.FC<ExpressionPanelProps> = ({
               </div>
             </div>
         )}
-
-        {/* Templates */}
-        <div className="border-t pt-4">
-          <div className="space-y-1 max-h-64 overflow-y-auto">
-            {expressionTemplates.map((template, index) => (
-              <div key={index} className="text-xs p-1">
-                <div className="font-mono">{template.template}</div>
-              </div>
-            ))}
-          </div>
-        </div>
       </div>
     </div>
   );
